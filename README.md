@@ -43,7 +43,6 @@ The file naming strategy separates **data processing** and **visualization** tas
 
 - **`2V` — Visualization**  
   Markdown files dedicated to generating visualizations and plots (e.g., UMAPs, dot plots, CellChat diagrams...) for result interpretation and presentation.
-
 The numbering indicates the sequential order of steps within each category, ensuring a structured and organized workflow.
 ---
 
@@ -51,8 +50,7 @@ The numbering indicates the sequential order of steps within each category, ensu
 Basic data processing in R - quality control, normalisation, integration, dimensional reduction, clustering and annotation
 1. **1DP_00_all_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd** - analysis of all cells obtained in the experiments
 2. **1DP_01_mg_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd** - this analysis specifically targets microglia
-3. **1DP_05_all_cells_LC_FN_raw_data_to_seurat_merged_integrated_UMAP.Rmd** - 2nd independent experiment
- 
+3. **1DP_05_all_cells_LC_FN_raw_data_to_seurat_merged_integrated_UMAP.Rmd** - 2nd independent experiment 
 Targeted analysis
 4. **1DP_02_DEG.Rmd**
 5. **1DP_03_GO.Rmd**
@@ -61,28 +59,29 @@ Targeted analysis
 
 ## Figures in article 
 This  guideline outlines the procedure for preparing figures for publication.
-**Fig. 1**
-- **A** BioRender
-- **B-D** 2V_00_all_cells_UMAP_dot_plot.Rmd
-- **E** 2V_03_technical_part.Rmd
 
-**Fig. 2** 
-- **A-E** 2V_02_mg_cells_UMAP_dot_plot.Rmd
+**Fig. 1: Comparison of three enrichment protocols for microglia populations** 
+- **A** - BioRender
+- **B-D** - 2V_00_all_cells_UMAP_dot_plot.Rmd
+- **E** - 2V_03_technical_part.Rmd
 
-**Fig. 3**
-- **A,C** 2V_04_DEG.Rmd
-- **B** 2V_04_DEG.Rmd + PowerPoint
-- **D** 2V_05_GO.Rmd + PowerPoint
+**Fig. 2: Characterization of microglia subpopulations** 
+- **A-E** - 2V_02_mg_cells_UMAP_dot_plot.Rmd
 
-**Fig. 4**
-- **A,C** 2V_06_CellChat.Rmd
-- **B** 2V_06_CellChat.Rmd + PowerPoint
+**Fig. 3: Comparison of microglia activation over isolation protocols**
+- **A,C** - 2V_04_DEG.Rmd
+- **B** - 2V_04_DEG.Rmd + PowerPoint
+- **D** - 2V_05_GO.Rmd + PowerPoint
 
-**SFig. 1** 
-- **A-C** 2V_03_technical_part.Rmd
+**Fig. 4: Cell–cell communication in microglial subclusters across isolation protocols**
+- **A,C** - 2V_06_CellChat.Rmd
+- **B** - 2V_06_CellChat.Rmd + PowerPoint
 
-**SFig. 2** 
-- **A-C** FlowJo - FACS data
+**SFig. 1: Technical parameters for Sham and MCAO condition separately** 
+- **A-C** - 2V_03_technical_part.Rmd
 
-**SFig. 3** 
-- **A-C** 2V_01_mg_cells_nonstandard_cluster_UMAP_FACS.Rmd
+**SFig. 2: Gating strategy for sorting across protocols** 
+- **A-C** - FlowJo - FACS data
+
+**SFig. 3: Exclusion of cluster** 
+- **A-C** - 2V_01_mg_cells_nonstandard_cluster_UMAP_FACS.Rmd
