@@ -1,0 +1,216 @@
+---
+title: "1DP_05_CellChat"
+author: "Domi"
+date: "2024-11-27"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+CellChat analysis 
+
+```{r Install package with defined version, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+remotes::install_version("future", version = "1.19.1") #By default, version 1.34.0 is set, but the function netClustering requires version 1.19.1. Install the required version. 
+3
+packageVersion("future")
+.rs.restartR()
+```
+
+
+#Continue from this step 
+```{r, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#Check availability for packges 
+# Load reticulate
+library(reticulate)
+
+# Check if Python 'umap' module is available
+if (!py_module_available("umap")) {
+  message("UMAP not available. Setting up Python 3.10 environment...")
+  
+  # Use Python 3.10
+  use_python("C:/Users/Dominika/AppData/Local/Programs/Python/Python310/python.exe", required = TRUE)
+  
+  # Show Python configuration
+  py_config()
+  
+  # Install required packages in Python 3.10
+  py_install("numpy", pip = TRUE)
+  py_install("umap-learn", pip = TRUE)
+  py_install("numba==0.56.4", pip = TRUE)
+  
+  # Restart R to apply changes
+  message("Installation finished. Restarting R session...")
+  .rs.restartR()
+  
+} else {
+  message("UMAP is already available. You can continue.")
+}
+```
+
+
+```{r Load packages, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("CellChat"))
+suppressMessages(library("ComplexHeatmap"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("reshape2"))
+suppressMessages(library("ggrepel"))
+suppressMessages(library("gridExtra"))
+suppressMessages(library("patchwork"))
+suppressMessages(library("openxlsx"))
+suppressMessages(library("magrittr"))
+
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)#File generaetd with zUMIS
+```
+
+
+#For CellCaht analysis DIV cluster was removed because tne number of cells involved in the LiveCells protocol was under the CellChat threshold. For the reason the analysis was done without it. 
+
+```{r CellChat preprocessing, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_mg <- readRDS("ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells.rds")
+#Subset for isolation protocols with normalization - RNA assay
+
+seuratmg_woDIV <- subset(seurat_mg, Cell_types_mg_abbr != "DIV")
+
+seuratmg_woDIV@meta.data %<>% mutate("Cell_types_mg_abbr_woDIV" = factor(case_when(
+  Cell_types_mg_abbr == "HM1" ~ "HM1",
+  Cell_types_mg_abbr == "HM2" ~ "HM2",
+  Cell_types_mg_abbr == "INTER" ~ "INTER",
+  Cell_types_mg_abbr == "ARM" ~ "ARM",
+  Cell_types_mg_abbr == "IRM" ~ "IRM"
+  )))
+```
+
+#For comparison of protocols, we subset  object for isolation protocols and then individiually processed CellChat analysis 
+```{r Divide object for isolation protocols, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#LiveCells
+seurat_mg_LC <- subset(seuratmg_woDIV, Project == "Cd11b_small_experiment")
+DefaultAssay(seurat_mg_LC) <- "RNA" 
+#seurat_mg_LC <- JoinLayers(seurat_mg_LC, assay = "RNA")
+all.genes.RNA <- rownames(seurat_mg_LC)
+seurat_mg_LC <- NormalizeData(seurat_mg_LC, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_mg_LC <- ScaleData(seurat_mg_LC, features = all.genes.RNA)
+
+#LiveNuclei
+seurat_mg_LN <- subset(seuratmg_woDIV, Project == "mouse_live_nuclei")
+DefaultAssay(seurat_mg_LN) <- "RNA" 
+#seurat_mg_LC <- JoinLayers(seurat_mg_LN, assay = "RNA")
+all.genes.RNA <- rownames(seurat_mg_LN)
+seurat_mg_LN <- NormalizeData(seurat_mg_LN, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_mg_LN <- ScaleData(seurat_mg_LN, features = all.genes.RNA)
+
+#FixedNuclei
+seurat_mg_FN <- subset(seuratmg_woDIV, Project == "mouse_fixed_nuclei")
+DefaultAssay(seurat_mg_FN) <- "RNA" 
+#seurat_mg_FN <- JoinLayers(seurat_mg_FN, assay = "RNA")
+all.genes.RNA <- rownames(seurat_mg_FN)
+seurat_mg_FN <- NormalizeData(seurat_mg_FN, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_mg_FN <- ScaleData(seurat_mg_FN, features = all.genes.RNA)
+
+
+
+# List of Seurat objects and corresponding sample names
+seurat_objects <- list(
+  seurat_mg_LC = "LiveCells_MCAO&Sham",
+  seurat_mg_LN = "LiveNuclei_MCAO&Sham",
+  seurat_mg_FN = "FixedNuclei_MCAO&Sham"
+)
+
+
+# Loop over each Seurat object and sample name
+for (seurat_name in names(seurat_objects)) {
+  # Assign the current sample name
+  sample.name <- seurat_objects[[seurat_name]]
+  
+  # Load the Seurat object dynamically
+  seurat.subset <- get(seurat_name)
+  
+  #Set idents
+  Idents(seurat.subset) <- "Cell_types_mg_abbr_woDIV"
+  
+  # Create CellChat object and process as per your workflow
+  cellchat <- createCellChat(object = seurat.subset, group.by = "Cell_types_mg_abbr_woDIV")
+  
+   # Drop unused factor levels in cell identities
+  cellchat@idents <- droplevels(cellchat@idents)
+  
+  # Map Ensembl IDs to gene symbols
+  cellchat@data@Dimnames[[1]] <- gene_symbol$gene_name[match(cellchat@data@Dimnames[[1]], gene_symbol$gene_id)]
+  
+  # Set up CellChat database
+   cellchat@DB<- CellChatDB.mouse
+  
+  # Run CellChat analyses
+  cellchat <- subsetData(cellchat)
+  future::plan("multisession", workers = 2)
+  
+  cellchat <- identifyOverExpressedGenes(cellchat)
+  cellchat <- identifyOverExpressedInteractions(cellchat)
+  cellchat <- computeCommunProb(cellchat, population.size = TRUE)
+  cellchat <- filterCommunication(cellchat, min.cells = 10)
+  cellchat <- computeCommunProbPathway(cellchat)
+  cellchat <- aggregateNet(cellchat)
+  
+  # Save the CellChat object with the sample name in the filename
+  saveRDS(cellchat, file = paste0("ws/1DP_04_", sample.name, "_cellchat_processed_RNA.rds"))
+  
+  print(paste("Processed and saved CellChat for", sample.name))
+}
+```
+
+#For comparison all individual protocols, the protocols were merged into one object
+```{r Prepare merged file for CellChat analysis for all conditions, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#https://rdrr.io/github/sqjin/CellChat/f/tutorial/Comparison_analysis_of_multiple_datasets.Rmd
+
+cellchat_list <- list(
+  LiveCells = readRDS("ws/1DP_04_LiveCells_MCAO&Sham_cellchat_processed_RNA.rds"),
+  LiveNuclei = readRDS("ws/1DP_04_LiveNuclei_MCAO&Sham_cellchat_processed_RNA.rds"),
+  FixedNuclei = readRDS("ws/1DP_04_FixedNuclei_MCAO&Sham_cellchat_processed_RNA.rds")
+)
+
+cellchat_merged <- mergeCellChat(cellchat_list, add.names = names(cellchat_list))
+
+cellchat_merged <- computeNetSimilarityPairwise(cellchat_merged, type = "functional")
+cellchat_merged <- netEmbedding(cellchat_merged, type = "functional")
+
+# Problem with netClustering about multisession >remotes::install_version("future", version = "1.19.1")
+
+cellchat_merged <- netClustering(cellchat_merged, type = "functional")
+
+saveRDS(cellchat_merged, "ws/1DP_04_CellChat_allconditions.rds")
+```
+
+#For comparion only LiveCells and FixedNuclei protocol
+```{r Prepare merged file for CellChat analysis for all conditions,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#https://rdrr.io/github/sqjin/CellChat/f/tutorial/Comparison_analysis_of_multiple_datasets.Rmd
+
+cellchat_list <- list(
+  LiveCells = readRDS("ws/1DP_04_LiveCells_MCAO&Sham_cellchat_processed_RNA.rds"),
+  FixedNuclei = readRDS("ws/1DP_04_FixedNuclei_MCAO&Sham_cellchat_processed_RNA.rds")
+)
+
+cellchat_merged <- mergeCellChat(cellchat_list, add.names = names(cellchat_list))
+
+cellchat_merged <- computeNetSimilarityPairwise(cellchat_merged, type = "functional")
+cellchat_merged <- netEmbedding(cellchat_merged, type = "functional")
+
+# Problem with netClustering about multisession >remotes::install_version("future", version = "1.19.1")
+
+cellchat_merged <- netClustering(cellchat_merged, type = "functional")
+
+saveRDS(cellchat_merged, "ws/1DP_04_CellChat_LC_FN_conditions.rds")
+```
+
+```{r Install package with defined version, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE }
+remotes::install_version("future", version = "1.34.0") #By default, version 1.34.0 is set, but the function netClustering requires version 1.19.0. Install the required version. 
+3
+packageVersion("future")
+.rs.restartR()
+```

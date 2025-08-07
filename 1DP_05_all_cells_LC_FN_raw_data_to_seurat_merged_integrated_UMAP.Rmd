@@ -1,0 +1,301 @@
+---
+title: "SS3x"
+author: "Domi"
+date: "08 01 2025"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+This scripts guide you through the analysis of single-cell and single-nucleus RNA sequencing (scRNA-seq and snRNA-seq) data generated from microglial enrichment experiments using two different isolation protocols: LiveCells and FixedNuclei.
+
+
+This guide will walk you through the preprocessing steps applied after running the **zUMIs** pipeline 
+**Description**:
+        **1. Data Loading and Preprocessing**
+            - Importing raw data from multiple samples.
+            - Quality control filtering (e.g., feature count thresholds, mitochondrial gene content).
+            
+        **2. Normalization and Scaling**
+            - Log-normalization of raw counts.
+            - Data scaling for downstream analysis.
+            - SCT normalization
+            
+        **3. Dimensionality Reduction and Integration**
+            - **PCA** (Principal Component Analysis) to reduce dimensionality.
+            - **UMAP** (Uniform Manifold Approximation and Projection) for 2D visualization.
+			      - **CCAIntegration** - Correction of batch effects to create a unified object.
+			
+
+Below are the key files prepared for downstream analysis which will be used in followed markdown files:
+
+1. **Seurat Object (All Cells)**  
+		- **File**: `ws/1DP_00_val_seurat_SCT_normalised_orders.rds`  
+		- **Description**: Contains all cells captured across isolation protocols (**LiveCells**, and **FixedNuclei**) and integrated using Seurat’s CCAIntegration method.
+
+---
+
+Load required package and functions
+```{r Load libraries, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE }
+suppressMessages(library("Matrix")) 
+suppressMessages(library("NormExpression"))
+suppressMessages(library("DropletUtils"))
+suppressMessages(library("pheatmap"))
+suppressMessages(library("RColorBrewer"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("sctransform"))
+suppressMessages(library("DT"))
+suppressMessages(library("scales"))
+suppressMessages(library("ggrepel"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("SeuratWrappers"))
+suppressMessages(library("scmap"))
+suppressMessages(library("DoubletFinder"))
+suppressMessages(library("scCATCH"))
+suppressMessages(library("reshape2"))
+suppressMessages(library("data.table"))
+suppressMessages(library("magrittr"))
+suppressMessages(library("openxlsx"))
+suppressMessages(library("patchwork"))
+
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+```
+
+Load the files generated as output from the processing of zUMIs on the raw data
+```{r Load files, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#Read output from zUMIs
+zumis_output <- readRDS("data/independent_exp/Smartseq3xpress.dgecounts.rds")
+#Read all metadata prepared manually
+metadata <- read.csv("data/independent_exp/metadata.csv", sep = ",")
+#Read table with gene symbols and IDs
+gene_symbol <- read.table("data/independent_exp/Smartseq3xpress.gene_names.txt", header = TRUE)
+```
+
+Statistics on coding region and exon coverage across different sequencing depths
+```{r Calculation of pct_coding and pct_exon, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+dge <- readRDS("data/independent_exp/Smartseq3xpress.dgecounts.rds")
+stats <- fread("data/independent_exp/Smartseq3xpress.readspercell.txt")[!RG %in% "bad"]
+stats <- dcast(stats, RG~type, value.var = "N")
+stats[, nreadpairs := Ambiguity+Exon+Intergenic+Intron+Unmapped]
+reads <- fread("data/independent_exp/Smartseq3xpresskept_barcodes_binned.txt.BCUMIstats.txt")
+reads[, UMIfraction := nUMItag/(nNontagged+nUMItag)]
+stats <- merge(stats,reads, by.x="RG", by.y="XC")
+
+
+#Statistic without downsampling
+exonic_UMIs <- as.matrix(dge$umicount$inex$all)
+exonic_Reads <- as.matrix(dge$readcount$inex$all)
+
+complexity <- data.table( RG = colnames(exonic_UMIs),
+                          nGenes = colSums(exonic_Reads>0),
+                          nGenesUMIs = colSums(exonic_UMIs>0), 
+                          nUMIs = colSums(exonic_UMIs))
+stats <- full_join(stats,complexity, by = "RG")
+stats[,pct_coding := ((Exon+Intron)/nreadpairs)*100]
+stats[,pct_exon := ((Exon)/nreadpairs)*100]
+
+
+# Statistic downsampled to 1000, 2000, and 5000 reads
+exonic_UMIs_1000 <- as.matrix(dge$umicount$inex$downsampling$downsampled_1000)
+exonic_Reads_1000 <- as.matrix(dge$readcount$inex$downsampling$downsampled_1000)
+complexity_1000 <- data.table( RG = colnames(exonic_UMIs_1000),
+                               nGenes_1000 = colSums(exonic_Reads_1000 > 0),
+                               nGenesUMIs_1000 = colSums(exonic_UMIs_1000 > 0), 
+                               nUMIs_1000 = colSums(exonic_UMIs_1000))
+
+# Repeat for 2000
+exonic_UMIs_2000 <- as.matrix(dge$umicount$inex$downsampling$downsampled_2000)
+exonic_Reads_2000 <- as.matrix(dge$readcount$inex$downsampling$downsampled_2000)
+complexity_2000 <- data.table( RG = colnames(exonic_UMIs_2000),
+                               nGenes_2000 = colSums(exonic_Reads_2000 > 0),
+                               nGenesUMIs_2000 = colSums(exonic_UMIs_2000 > 0), 
+                               nUMIs_2000 = colSums(exonic_UMIs_2000))
+
+# Repeat for 5000
+exonic_UMIs_5000 <- as.matrix(dge$umicount$inex$downsampling$downsampled_5000)
+exonic_Reads_5000 <- as.matrix(dge$readcount$inex$downsampling$downsampled_5000)
+complexity_5000 <- data.table( RG = colnames(exonic_UMIs_5000),
+                               nGenes_5000 = colSums(exonic_Reads_5000 > 0),
+                               nGenesUMIs_5000 = colSums(exonic_UMIs_5000 > 0), 
+                               nUMIs_5000 = colSums(exonic_UMIs_5000))
+
+# Merge the tables
+stats <- full_join(stats, complexity_1000, by = "RG")
+stats <- full_join(stats, complexity_2000, by = "RG")
+stats <- full_join(stats, complexity_5000, by = "RG")
+
+
+#Statistic downsampled to 10000 reads
+exonic_UMIs <- as.matrix(dge$umicount$inex$downsampling$downsampled_10000)
+exonic_Reads <- as.matrix(dge$readcount$inex$downsampling$downsampled_10000)
+complexity_10000 <- data.table( RG = colnames(exonic_UMIs),
+                          nGenes_10000 = colSums(exonic_Reads>0),
+                          nGenesUMIs_10000 = colSums(exonic_UMIs>0), 
+                          nUMIs_10000 = colSums(exonic_UMIs))
+#merge assymetric tables
+stats <- full_join(stats,complexity_10000, by = "RG")
+
+
+#Statistic downsampled to 20000 reads
+exonic_UMIs <- as.matrix(dge$umicount$inex$downsampling$downsampled_20000)
+exonic_Reads <- as.matrix(dge$readcount$inex$downsampling$downsampled_20000)
+complexity_20000 <- data.table( RG = colnames(exonic_UMIs),
+                          nGenes_20000 = colSums(exonic_Reads>0),
+                          nGenesUMIs_20000 = colSums(exonic_UMIs>0), 
+                          nUMIs_20000 = colSums(exonic_UMIs))
+#merge assymetric tables
+stats <- full_join(stats,complexity_20000, by = "RG")
+
+
+stats_plot <- stats[stats$RG %in% metadata$Barcode,]
+stats_plot <- merge(stats_plot, metadata[, c("Barcode", "Condition")], 
+                    by.x = "RG", by.y = "Barcode")
+```
+
+Prepare seurat object 
+```{r Preparetion of seurat object, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat <- CreateSeuratObject(counts = zumis_output$umicount$inex$downsampling$downsampled_2000)
+row.names(metadata) <- metadata$Barcode
+metadata <- metadata[row.names(metadata) %in% colnames(seurat),]
+metadata <- metadata[colnames(seurat),]
+
+stats <- as.data.frame(stats)
+stats <- stats[stats$RG %in% colnames(seurat),]
+seurat@meta.data <- cbind(seurat@meta.data,metadata[,c(2:ncol(metadata))])
+seurat@meta.data <- cbind(seurat@meta.data,stats[,c(2:ncol(stats))])
+
+#Remove unnecessary objects for next steps
+rm(dge, exonic_UMIs, exonic_Reads, complexity, complexity_1000, complexity_2000, complexity_5000, complexity_10000, complexity_20000, metadata, reads, zumis_output, stats)
+```
+
+Subset for individual isolation protocols - dataset is composed of two isolation protocols
+```{r Subset for individual isolation protocols, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_raw <- seurat
+seurat <- as.list(NULL)
+
+seurat[["LiveCells"]] <- subset(seurat_raw, subset = Condition %in% c("LiveCells_MCAO") &  Condition != "empty")
+seurat[["FixedNuclei"]] <- subset(seurat_raw, subset = Condition %in% c("FixedNuclei_MCAO") & Condition != "empty")
+```
+
+Statistic about percentages of mitochondria, ribosomes, ERCC, SIRV, spike
+```{r Calculate percentages of genes, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#Reduce gene_symbol list only to genes detected in experiment - problems with counting of percentages
+gene_symbol <- gene_symbol[gene_symbol$gene_id %in% rownames(seurat[[1]]),]
+
+
+#For each Seurat object in the "seurat" list, this process calculates the percentage of mitochondrial and ribosomal protein genes. The results are stored in two new columns within each Seurat object: "percent.mt" for the percentage of mitochondrial genes and "percent.rib" for the percentage of ribosomal protein genes.
+for(i in 1:length(seurat)) {
+  seurat[[i]][["percent.mt"]] <- PercentageFeatureSet(seurat[[i]], features = Symbol_to_ENSEMBL(c(grep("^mt-",gene_symbol$gene_name,value = TRUE))))
+  seurat[[i]][["percent.rib"]] <- PercentageFeatureSet(seurat[[i]], features = Symbol_to_ENSEMBL(c(grep("^Rp[ls]",gene_symbol$gene_name,value = TRUE))))
+  seurat[[i]][["percent.ERCC"]] <- PercentageFeatureSet(seurat[[i]], pattern = "ERCC-")
+  seurat[[i]][["percent.SIRV"]] <- PercentageFeatureSet(seurat[[i]], pattern = "SIRV")
+  seurat[[i]][["percent.spike"]] <- PercentageFeatureSet(seurat[[i]], pattern = "ERCC-|SIRV")
+}
+```
+
+Fast check of cutoffs for filtering
+```{r Visualisation , eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE} 
+# Define the cutoffs for each sample
+feature_cutoffs <- c(450, 450)
+count_cutoffs <- c(700, 500)
+spike_cutoffs <- c(17, 15)
+umi_cutoffs <- rep(1, 1)
+
+# Store plots here
+plots <- list()
+
+for (i in 1:2) {
+  Idents(seurat[[i]]) <- "Condition"
+  p1 <- VlnPlot(seurat[[i]], features = "nFeature_RNA", pt.size = 0, split.by = "Condition") +
+    NoLegend() + geom_hline(yintercept = feature_cutoffs[i])
+  
+  p2 <- VlnPlot(seurat[[i]], features = "nCount_RNA", pt.size = 0, split.by = "Condition") +
+    scale_y_log10() + NoLegend() + geom_hline(yintercept = count_cutoffs[i])
+  
+  p3 <- VlnPlot(seurat[[i]], features = "percent.spike", pt.size = 0, assay = "RNA", split.by = "Condition") +
+    NoLegend() + geom_hline(yintercept = spike_cutoffs[i])
+  
+  p4 <- VlnPlot(seurat[[i]], features = "UMIfraction", pt.size = 0, assay = "RNA", split.by = "Condition") +
+    NoLegend() + geom_hline(yintercept = umi_cutoffs[i]) + ylim(0.7, 1)
+  
+  # Combine vertically per sample
+ plots[[i]] <- p1 / p2 / p3 / p4
+}
+
+# Combine horizontally
+combined_plot <- wrap_plots(plots, nrow = 1)
+combined_plot
+
+```
+
+
+SCT Normalization, PCA Calculation, and Data Integration, UMAP
+```{r SCTtransform data - normalization, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#Filter unwanted cells
+seurat_filter <- as.list(NULL)
+seurat_filter[[1]] <- subset(seurat[[1]], subset = percent.spike < 17 & nFeature_RNA > 450 & nCount_RNA > 700) #& UMIfraction > 0.5)
+seurat_filter[[2]] <- subset(seurat[[2]], subset = percent.spike < 15 & nFeature_RNA > 450 & nCount_RNA > 500) #& UMIfraction > 0.5)
+
+#Merge objects without integration
+seurat_merged <- merge(x = seurat_filter[[1]], y = list(seurat_filter[[2]]))
+
+
+#Filter out ERCC and SIRV genes
+seurat_merged <- seurat_merged[!(rownames(seurat_merged) %in% c(grep("^ERCC-",rownames(seurat[[i]]),value = TRUE),
+                                                                grep("^SIRV",rownames(seurat[[i]]),value = TRUE))), ]
+
+#Normalize using SC Transformation
+seurat_merged <- SCTransform(seurat_merged, verbose = TRUE, return.only.var.genes = FALSE, method = "glmGamPoi",
+                                       assay = "RNA",n_genes = NULL, variable.features.n = 3000, new.assay.name = "SCT")
+
+rm(seurat, i, seurat_filter)
+
+#PCA
+DefaultAssay(seurat_merged) <- "SCT"
+seurat_merged <- RunPCA(seurat_merged, npcs = 50, verbose = FALSE, assay = "SCT", reduction.name = "pca")
+
+#Integration - CCA - different types of data
+seurat_merged <- IntegrateLayers(seurat_merged, assay = "SCT", method = CCAIntegration, normalization.method = "SCT", orig.reduction = "pca", new.reduction = "integrated.cca", verbose = TRUE)
+
+#Calculate UMAP and clusters for each integration method
+seurat_merged <- RunUMAP(seurat_merged, reduction = "integrated.cca", dims = 1:50, verbose = TRUE, reduction.name = "umap.cca")
+seurat_merged <- FindNeighbors(seurat_merged, reduction = "integrated.cca", dims = 1:50, verbose = TRUE, graph.name = c("cca.nn","cca.snn"))
+seurat_merged <- FindClusters(seurat_merged, resolution = 0.3, verbose = TRUE,cluster.name = "cca_clusters", graph.name = "cca.snn")
+```
+
+
+Metadata Variable Preparation for Seurat Object
+```{r Preparation of columns with needed variables, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#COND_PUBLICATION
+# Change order
+seurat_merged@meta.data %<>% mutate("Cond_publication_val" = factor(
+  case_when(
+    Condition == "LiveCells_MCAO" ~ "LiveCells_MCAO",
+    Condition == "FixedNuclei_MCAO" ~ "FixedNuclei_MCAO"
+  )
+))
+
+seurat_merged@meta.data$Cond_publication_val <- factor(seurat_merged@meta.data$Cond_publication_val , levels = orders[["Cond_publication_val"]])
+seurat_merged@meta.data$Cond_publication_val %>% table()
+
+#COND_PREPARATION
+seurat_merged@meta.data %<>% mutate("Cond_preparation" = factor(
+  case_when(
+    Condition ==  "LiveCells_MCAO" ~ "LiveCells",
+    Condition == "FixedNuclei_MCAO" ~ "FixedNuclei"
+  )
+))
+
+
+#  Change order
+seurat_merged@meta.data$Cond_preparation <- factor(seurat_merged@meta.data$Cond_preparation , levels = orders[["Cond_preparation_val"]])
+seurat_merged@meta.data$Cond_preparation %>%table()
+
+
+#Save seurat object
+saveRDS(seurat_merged,"ws/1DP_00_val_seurat_SCT_normalised_orders.rds")
+```

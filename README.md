@@ -7,7 +7,7 @@ Datasets are publicly available on **Zenodo**.
 The main experiment can be explored online via **Nygen portal**.
 
 ## Experimental Overview
-Enriching microglia from fresh-frozen brain tissue is challenging due to marker degradation and cellular fragility. To overcome these limitations, we developed a novel protocol (**FixedNuclei**)  that selectively enriches PU.1⁺ nuclei:
+Enriching microglia from fresh-frozen brain tissue is challenging due to marker degradation and cellular fragility. To overcome these limitations, we developed a novel protocol (**FixedNuclei**)  that selectively enriches PU.1⁺ nuclei (protocol.io):
 
 - **FixedNuclei** - snRNA-seq of nuclei isolated from lightly formaldehyde-fixed tissue and enriched for PU.1+ nuclei, capturing nuclear transcripts only.
 
@@ -18,8 +18,8 @@ Results obtained with the FixedNuclei protocol were compared with two commonly u
 ## Sample Collection and Library Preparation
 - **Samples** - cortical tissue was collected from **male mice** subjected to permanent MCAO (7 days post-stroke) and controls (sham).
 - **Library Preparation** - full-length mRNA sequencing using **Smart-seq3xpress (SS3x)**:
-  - **FixedNuclei** - Includes thermolabile proteinase K for decrosslinking while preserving RNA integrity.
-  - **LiveCells/LiveNuclei** - Standard SS3x without proteinase K.
+  - **FixedNuclei** - includes thermolabile proteinase K for decrosslinking while preserving RNA integrity.
+  - **LiveCells/LiveNuclei** - standard SS3x without proteinase K.
 ---
 
 ## Setting Up the R Project

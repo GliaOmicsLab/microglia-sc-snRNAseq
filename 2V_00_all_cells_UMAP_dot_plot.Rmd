@@ -1,0 +1,346 @@
+---
+title: "SS3x"
+author: "Domi"
+date: "15 01 2025"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+Introduction
+This script is dedicated to visualizing preprocessed data from **1DP_00_all_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd**. The processed data are represented using **UMAP plots, dot plots, and stacked plots** to illustrate clustering, marker expression, and population distributions. These visualizations provide insights into cell-type composition and gene expression patterns across different isolation protocols.
+
+
+Loading required libraries and functions
+```{r Load packages and lists,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("RColorBrewer"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("sctransform"))
+suppressMessages(library("scales"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("SeuratWrappers"))
+suppressMessages(library("reshape2"))
+suppressMessages(library("ComplexHeatmap"))
+suppressMessages(library("gridExtra"))
+suppressMessages(library("magrittr"))
+suppressMessages(library("patchwork"))
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+#Read table with gene symbols end IDs
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)
+```
+
+```{r Load seurat object,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat <- readRDS("ws/1DP_00_seurat_merged_integrated_UMAP_all_cells.rds")
+```
+
+UMAP visualisation
+```{r UMAP_all_cells,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+plots[["UMAP_all"]] <- DimPlot(
+  seurat,
+  reduction = "umap.cca",
+  group.by = "Cell_types_all_abbr",
+  pt.size = 0.1,
+  cols = col_list[["UMAP_all"]]
+) + 
+  ggtitle("All conditions") + 
+  theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))  
+
+
+plots[["UMAP_all"]]
+```
+
+```{r UMAP_all_cells_condition_LiveCells,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_filtered_LiveCells <- subset(seurat, LiveCells != "LiveNuclei + FixedNuclei")
+
+
+plots[["UMAP_all_LiveCells"]] <- DimPlot(
+  seurat_filtered_LiveCells,
+  reduction = "umap.cca",
+  group.by = "LiveCells",
+  pt.size = 0.1,
+  cols = col_list[["UMAPLiveCells"]]
+) + 
+  ggtitle("LiveCells") + 
+ theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1))) 
+
+plots[["UMAP_all_LiveCells"]]
+#rm(seurat_filtered_LiveCells)
+```
+
+```{r UMAP_all_cells_condition_LiveNuclei,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_filtered_LiveNuclei <- subset(seurat, LiveNuclei != "LiveCells + FixedNuclei")
+
+plots[["UMAP_all_LiveNuclei"]] <- DimPlot(
+  seurat_filtered_LiveNuclei,
+  reduction = "umap.cca",
+  group.by = "LiveNuclei",
+  pt.size = 0.1,
+  cols = col_list[["UMAPLiveNuclei"]]
+) + 
+  ggtitle("LiveNuclei") + 
+  theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))  
+
+plots[["UMAP_all_LiveNuclei"]]
+#rm(seurat_filtered_LiveNuclei)
+```
+
+```{r UMAP_all_cells_condition_FixedNuclei,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_filtered_FixedNuclei <- subset(seurat, FixedNuclei != "LiveCells + LiveNuclei")
+
+plots[["UMAP_all_FixedNuclei"]] <- DimPlot(
+  seurat_filtered_FixedNuclei,
+  reduction = "umap.cca",
+  group.by = "FixedNuclei",
+  pt.size = 0.1,
+  cols = col_list[["UMAPFixedNuclei"]]
+) + 
+  ggtitle("FixedNuclei") + 
+  theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))  
+
+plots[["UMAP_all_FixedNuclei"]]
+#rm(seurat_filtered_FixedNuclei)
+```
+
+```{r Table with cells per condition, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#info about cells per condition
+table(seurat@meta.data$Cond_preparation)
+table(seurat@meta.data$Cell_types_all_abbr)
+```
+
+## Fig. 01 B - UMAP visualisation in combination of 4 UMAPs
+```{r Save UMAP visualisation, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_1stline <- "
+AB
+CD
+"
+plots[["1st_line01"]] <- plots[["UMAP_all"]] + plots[["UMAP_all_LiveCells"]] +
+plots[["UMAP_all_LiveNuclei"]] + plots[["UMAP_all_FixedNuclei"]] +  
+   plot_layout(design =  layout_1stline,
+              widths = c(1, 1)) +
+  plot_annotation(
+    tag_levels = list(c('B'),  
+                      theme = theme(
+                        plot.tag = element_text(size = 6, face = "plain")  
+                      )))
+
+plots[["1st_line01"]]
+
+ggsave(
+  filename = "results/2V_Fig01_1stline.svg",              
+  plot = plots[["1st_line01"]],          
+  device = "svg",                          
+  width = 9.3,                             
+  height = 9,                              
+  units = "cm"                            
+)
+```
+
+
+Dotplot visualisation of genes
+```{r List of marker_genes_all, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#makrers chosen by web site https://cellxgene.cziscience.com
+markers_all <- c("Hexb", "Cx3cr1", "Siglech", "Trem2",  #Microglia
+                 "Lyz2","Pf4", "Ms4a7", "F13a1",        #PVM - mousebrain.org
+                 "Ms4a6c", "Tmsb10", "S100a4","Ccr2",   #Monocytes
+                 "S100a8", "S100a9","Mmp9", "Msrb1",    #Neutrophils
+                 "Cald1", "Vtn",   "Myl9", "Slc38a11",  #Mural cells
+                 "Egfl7", "Eng", "Ramp2", "Cd93",       #Endothelial cells
+                 "Mbp", "Plp1", "Enpp2", "Mag",         #Oligo
+                 "Slc1a2", "Prdx6", "Mt1","Slc4a4")     #Astrocytes
+
+```
+
+```{r RNA normalization, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+DefaultAssay(seurat) <- "RNA" 
+seurat <- JoinLayers(seurat, assay = "RNA")
+all.genes.RNA <- rownames(seurat)
+seurat <- NormalizeData(seurat, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat <- ScaleData(seurat, features = all.genes.RNA)
+```
+
+```{r Changed Dot plot with feature test, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+DefaultAssay(seurat) <- "RNA" 
+Idents(seurat) <- "Cell_types_all_abbr"
+
+plots[["dot_plot_all"]] <- DotPlot(
+  seurat, 
+  features = Symbol_to_ENSEMBL(markers_all), 
+ dot.min = 0.20 
+) + 
+  scale_x_discrete(labels = ENSEMBL_to_Symbol(Symbol_to_ENSEMBL(markers_all))) + 
+  theme_mk + 
+  remove_grid +
+  theme(
+    axis.text.x = element_text(angle = 290, hjust = 0, vjust = 0.5, size = 6, face = "italic"), 
+    axis.title.x = element_blank(),                                
+    axis.title.y = element_blank(),                                
+    legend.position = "bottom",                                   
+    plot.margin = margin(0,0,0,0),                                 
+    
+  legend.margin = margin(b = -5, l = -3),
+  legend.box.spacing = unit(0.1, "cm"),
+  legend.box.just = "left"
+    ) +
+  scale_color_gradientn(
+    name = "Scaled average \ngene expression",   
+    colors = c("#E8ECEF","#9ABDDC", "#3A0956")            
+  ) +
+  scale_size_continuous(
+    name = "Pergentage \nof cells (%)",
+    range = c(0.5, 2)              
+  ) +
+  guides(
+    color = guide_colorbar(title.position = "left"), 
+    size = guide_legend(title.position = "left")     
+  )
+
+# Display the customized Dot Plot
+plots[["dot_plot_all"]]
+```
+
+## Fig. 01 C
+```{r Fig01_2nd line DotPlot, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_2ndline <- "
+A
+"
+plots[["2nd_line_dot01"]] <- plots[["dot_plot_all"]] +
+  plot_layout(design =  layout_2ndline) +
+  plot_annotation(
+    tag_levels = list(c('C'), 
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  
+                      )))
+                      
+plots[["2nd_line_dot01"]]
+
+ggsave(
+  filename = "results/2V_Fig01_2ndline_dot.svg",          
+  plot = plots[["2nd_line_dot01"]],          
+  device = "svg",                          
+  width = 9.35,                             
+  height = 5,                              
+  units = "cm"                          
+)
+```
+
+
+Stacked bar_plots with relative proportion of cells in clusters
+```{r Counts for stacked bar plot, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+metadata_df <- read.csv("ws/1DP_00_seurat_all_cells_metadata_for_subset_mg.csv")
+
+
+#Filter NA
+metadata_df <- metadata_df %>%
+  filter(!is.na(Cell_types_all_abbr))
+
+
+# Calculate total counts per condition
+total_counts_per_condition <- metadata_df %>%
+  group_by(Cond_publication) %>%
+  tally(name = "total_cells")
+
+# Calculate counts per cluster per condition
+cluster_counts <- metadata_df %>%
+  group_by(Cond_publication, Cell_types_all_abbr) %>%
+  tally(name = "cluster_count")
+
+# Join the total counts with cluster counts
+perc_clust_per_condition <- cluster_counts %>%
+  left_join(total_counts_per_condition, by = "Cond_publication") %>%
+  mutate(percent = (cluster_count / total_cells) * 100) %>%
+  select(Cond_publication, Cell_types_all_abbr, percent)
+
+# View the resulting data frame
+print(perc_clust_per_condition)
+
+#Check microglia 
+perc_clust_per_condition %>%
+  filter(Cell_types_all_abbr == "MG")
+
+rm(total_counts_per_condition, cluster_counts)
+
+#change order of cell types - inverted
+perc_clust_per_condition$Cell_types_all_abbr <- factor(perc_clust_per_condition$Cell_types_all_abbr, levels = orders[["Cell_types_all_abbr_invert"]])
+
+#group Sham together and MCAO 
+perc_clust_per_condition$Cond_publication <- factor(perc_clust_per_condition$Cond_publication, levels = orders[["Cond_publication"]])
+
+
+
+# Group microglia cluster into one - better for visualisation 
+perc_clust_per_condition %<>% mutate("Cond_SHAMvsMCAO" = factor(case_when(
+  Cond_publication == "LiveCells_Sham" ~ "Sham",
+  Cond_publication == "LiveNuclei_Sham"~ "Sham",
+  Cond_publication == "FixedNuclei_Sham" ~ "Sham",
+  Cond_publication ==  "LiveCells_MCAO"~ "MCAO",
+  Cond_publication == "LiveNuclei_MCAO" ~ "MCAO",
+  Cond_publication == "FixedNuclei_MCAO" ~ "MCAO"
+)))
+
+perc_clust_per_condition$Cond_SHAMvsMCAO <- factor(perc_clust_per_condition$Cond_SHAMvsMCAO , levels = orders[["Cond_SHAMvsMCAO"]])
+perc_clust_per_condition$Cond_SHAMvsMCAO %>% table()
+
+perc_clust_per_condition %<>% mutate("Cond_appr" = factor(case_when(
+  Cond_publication == "LiveCells_Sham" ~ "LiveCells",
+  Cond_publication == "LiveNuclei_Sham"~ "LiveNuclei",
+  Cond_publication == "FixedNuclei_Sham" ~ "FixedNuclei",
+  Cond_publication ==  "LiveCells_MCAO"~ "LiveCells",
+  Cond_publication == "LiveNuclei_MCAO" ~ "LiveNuclei",
+  Cond_publication == "FixedNuclei_MCAO" ~ "FixedNuclei"
+)))
+```
+
+```{r Stacked bar plot - condition vs percentage of cells, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+plots[["stacked_bar_all"]] <- ggplot(perc_clust_per_condition, aes(x = Cond_appr, y = percent, fill = Cell_types_all_abbr)) +
+  geom_bar(position = "stack", stat = "identity", color = "#2d1800", size = 0.3 ) + 
+  scale_fill_manual(values = col_list[["UMAP_all"]]) +  
+  labs(x = "Conditions", y = "Relative proportion of cells (%)", fill = "Cell \ntypes") +
+ theme_mk +
+   scale_y_continuous(
+    expand = c(0, 0),               
+    breaks = seq(0, 100, by = 20))+ 
+  facet_grid(. ~ Cond_SHAMvsMCAO)+
+  remove_grid +
+   theme(
+    strip.text = element_text(size = 6),        
+    strip.background = element_blank(),        
+    legend.position = "right",
+    legend.margin = margin(t = -7.5),
+    plot.margin = margin(0,0,0,0),
+    axis.text.x = element_text(angle = 340, vjust = +0.1, hjust = +0.2),
+    axis.title.x = element_blank(), 
+    legend.text = element_text(margin = margin(t = 0, r = 1, b = 1, l = 1)),
+    legend.title = element_text(margin = margin(t = 0, r = 1, b = 6, l = 1))
+    )  
+
+plots[["stacked_bar_all"]]
+```
+
+# Fig. 01 D
+```{r Save Stacked bar plot,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+ggsave(
+  filename = "results/2V_Fig01_2ndline_stacked_barplot.svg",              
+  plot = plots[["stacked_bar_all"]],          
+  device = "svg",                          
+  width = 7,                             
+  height = 4.5,                              
+  units = "cm"                          
+)
+```

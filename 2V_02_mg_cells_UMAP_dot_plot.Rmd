@@ -1,0 +1,544 @@
+---
+title: "SS3x"
+author: "Domi"
+date: "2025-01-16"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+Introduction
+This script is dedicated to visualizing preprocessed data from **1DP_01_mg_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd**. The processed data are represented using **UMAP plots, dot plots, and stacked plots** to illustrate clustering, marker expression, and population distributions. These visualizations provide insights into cell-type composition and gene expression patterns across different isolation protocols.
+
+
+```{r Load packages and lists,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("RColorBrewer"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("sctransform"))
+suppressMessages(library("scales"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("SeuratWrappers"))
+suppressMessages(library("reshape2"))
+suppressMessages(library("ComplexHeatmap"))
+suppressMessages(library("gridExtra"))
+suppressMessages(library("magrittr"))
+suppressMessages(library("patchwork"))
+suppressMessages(library("ggpubr"))
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+#Read table with gene symbols end IDs
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)
+```
+
+#UMAP visualisation
+```{r seurat LOAD,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#Load seurat
+seurat_mg <- readRDS("ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells.rds")
+```
+
+```{r UMAP_all_microglia,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+plots[["UMAP_all_mg"]] <- DimPlot(
+  seurat_mg,
+  reduction = "umap.cca_rm",
+  group.by = "Cell_types_mg_abbr",
+  pt.size = 0.1,  
+  cols = col_list[["UMAP_mg"]]
+) + 
+  ggtitle("All conditions") + 
+ ggtitle("All conditions") + 
+  theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))
+
+# Display the plot
+plots[["UMAP_all_mg"]]
+
+```
+
+```{r UMAP_all_cells_condition_LiveCells,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_filtered_LiveCells <- subset(seurat_mg, LiveCells != "LiveNuclei + FixedNuclei")
+
+plots[["UMAP_mg_LiveCells"]] <- DimPlot(
+  seurat_filtered_LiveCells,
+  reduction = "umap.cca_rm",
+  group.by = "LiveCells",
+  pt.size = 0.1,
+  cols = col_list[["UMAPLiveCells"]]
+) + 
+  ggtitle("LiveCells") + 
+  theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))
+
+
+plots[["UMAP_mg_LiveCells"]]
+#rm(seurat_filtered_LiveCells)
+```
+
+```{r UMAP_all_cells_condition_LiveNuclei,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_filtered_LiveNuclei <- subset(seurat_mg, LiveNuclei != "LiveCells + FixedNuclei")
+
+
+plots[["UMAP_mg_LiveNuclei"]] <- DimPlot(
+  seurat_filtered_LiveNuclei,
+  reduction = "umap.cca_rm",
+  group.by = "LiveNuclei",
+  pt.size = 0.1,
+  cols = col_list[["UMAPLiveNuclei"]]
+) + 
+  ggtitle("LiveNuclei") + 
+ theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))
+
+
+plots[["UMAP_mg_LiveNuclei"]]
+#rm(seurat_filtered_LiveNuclei)
+
+```
+
+```{r UMAP_all_cells_condition_FixNuclei,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_filtered_FixedNuclei <- subset(seurat_mg, FixedNuclei != "LiveCells + LiveNuclei")
+
+
+plots[["UMAP_mg_FixedNuclei"]] <- DimPlot(
+  seurat_filtered_FixedNuclei,
+  reduction = "umap.cca_rm",
+  group.by = "FixedNuclei",
+  pt.size = 0.1,
+  cols = col_list[["UMAPFixedNuclei"]]
+) + 
+  ggtitle("FixedNuclei") + 
+  theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))
+
+
+plots[["UMAP_mg_FixedNuclei"]]
+#rm(seurat_filtered_FixedNuclei)
+```
+
+```{r Table with cells, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#info about cells per condition
+table(seurat_mg@meta.data$Cond_preparation)
+table(seurat_mg@meta.data$Cell_types_mg_abbr)
+```
+
+# Fig. 02 A UMAP visualisation in combination of 4 UMAPs
+```{r UMAP saving, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_1stline <- "
+ABCD
+"
+plots[["1st_line02"]] <- plots[["UMAP_all_mg"]] + plots[["UMAP_mg_LiveCells"]] + plots[["UMAP_mg_LiveNuclei"]] + plots[["UMAP_mg_FixedNuclei"]] +  
+   plot_layout(design =  layout_1stline,
+              widths = c(1,1,1,1)) +
+  plot_annotation(
+    tag_levels = list(c('A', ''),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  # Customize tag size and appearance
+                      )))
+
+plots[["1st_line"]]
+
+ggsave(
+  filename = "results/2V_Fig02_1stlineUMAP.svg",              
+  plot = plots[["1st_line02"]],          
+  device = "svg",                          
+  width = 16.9,                            
+  height = 5,                              
+  units = "cm"                            
+)
+```
+
+
+#Dotplot visualisation of genes
+```{r List of marker_genes_all,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+markers_mg <- c("P2ry12", "Tmem119", "Hexb",  #Homeostatic
+                "C1qa", "C1qc", "C1qb", #Reactive
+                "Trem2","Lyz2","Apoe", "Cst7", "Lpl", "Clec7a",    #ARM
+                "Ccl6", "Ccl3", "Ccl4",
+                "Ifit3",  "Irf7", "Ifitm3", #IRM
+                "Birc5",  "Tuba1b", "Stmn1"  #Dividing
+                
+)
+```
+
+```{r RNA normalization,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+DefaultAssay(seurat_mg) <- "RNA" 
+seurat_mg <- JoinLayers(seurat_mg, assay = "RNA")
+all.genes.RNA <- rownames(seurat_mg)
+seurat_mg <- NormalizeData(seurat_mg, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_mg <- ScaleData(seurat_mg, features = all.genes.RNA)
+```
+
+```{r Dot plot with feature test,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+DefaultAssay(seurat_mg) <- "RNA"
+Idents(seurat_mg) <- "Cell_types_mg_abbr"
+
+
+plots[["dot_plot_mg"]] <- DotPlot(
+  seurat_mg, 
+  features = Symbol_to_ENSEMBL(markers_mg), 
+ dot.min = 0.20 
+) + 
+  scale_x_discrete(labels = ENSEMBL_to_Symbol(Symbol_to_ENSEMBL(markers_mg))) + 
+  theme_mk + 
+  remove_grid +
+  theme(
+    axis.text.x = element_text(angle = 290, hjust = 0, vjust = 0.5, size = 6, face = "italic"),
+    axis.title.x = element_blank(),                                
+    axis.title.y = element_blank(),                               
+    legend.position = "bottom",                                    
+    plot.margin = margin(0,0,0,0),                                  
+  legend.margin = margin(b = -5, l = -3),
+  legend.box.spacing = unit(0.1, "cm"),
+  legend.box.just = "left"
+    ) +
+  scale_color_gradientn(
+    name = "Scaled average \ngene expression",  
+    colors = c("#E8ECEF","#9ABDDC", "#3A0956")             
+  ) +
+  scale_size_continuous(
+    name = "Pergentage \nof cells (%)",
+    range = c(0.5, 2)              # Set the range for dot sizes; adjust as needed
+  ) +
+  guides(
+    color = guide_colorbar(title.position = "left"), # Adjust legend color bar position if needed
+    size = guide_legend(title.position = "left")     # Adjust size legend position if needed
+  )
+  
+
+plots[["dot_plot_mg"]]
+```
+
+# Fig 02 B
+```{r Fig02_2ndline,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_2ndline <- "
+A
+"
+
+plots[["2nd_line_dot"]] <- plots[["dot_plot_mg"]] +
+  plot_layout(design =  layout_2ndline) +
+  plot_annotation(
+    tag_levels = list(c('B'),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain") 
+                      )))
+                      
+plots[["2nd_line_dot"]]
+
+ggsave(
+  filename = "results/2V_Fig02_2ndline_dot.svg",             
+  plot = plots[["2nd_line_dot"]],          
+  device = "svg",                         
+  width = 9.35,                             
+  height = 5,                              
+  units = "cm"                            
+)
+
+```
+
+
+#Stacked bar_plots with relative proportion of cells in clusters
+```{r Data frame with percentages for clusters per condition,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+metadata_df <- read.csv("ws/1DP_01_mg_seurat_metadata.csv")
+# Calculate total counts per condition
+total_counts_per_condition <- metadata_df %>%
+  group_by(Cond_publication) %>%
+  tally(name = "total_cells")
+
+# Calculate counts per cluster per condition
+cluster_counts <- metadata_df %>%
+  group_by(Cond_publication, Cell_types_mg_abbr) %>%
+  tally(name = "cluster_count")
+
+# Join the total counts with cluster counts
+perc_clust_per_condition <- cluster_counts %>%
+  left_join(total_counts_per_condition, by = "Cond_publication") %>%
+  mutate(percent = (cluster_count / total_cells) * 100) %>%
+  select(Cond_publication, Cell_types_mg_abbr, percent)
+
+# View the resulting data frame
+print(perc_clust_per_condition)
+
+rm(total_counts_per_condition, cluster_counts)
+
+#change order of cell types - inverted
+perc_clust_per_condition$Cell_types_mg_abbr <- factor(perc_clust_per_condition$Cell_types_mg_abbr, levels = orders[["Cell_types_mg_abbr_invert"]])
+perc_clust_per_condition$Cell_types_mg_abbr %>% table()
+
+#group Sham together and MCAO 
+perc_clust_per_condition$Cond_publication <- factor(perc_clust_per_condition$Cond_publication, levels = orders[["Cond_publication"]])
+
+
+
+# Group microglia cluster into one - better for visualisation 
+perc_clust_per_condition %<>% mutate("Cond_SHAMvsMCAO" = factor(case_when(
+   Cond_publication == "LiveCells_Sham" ~ "Sham",
+   Cond_publication == "LiveNuclei_Sham"~ "Sham",
+   Cond_publication == "FixedNuclei_Sham" ~ "Sham",
+   Cond_publication ==  "LiveCells_MCAO"~ "MCAO",
+   Cond_publication == "LiveNuclei_MCAO" ~ "MCAO",
+   Cond_publication == "FixedNuclei_MCAO" ~ "MCAO"
+)))
+
+#group SHAM or MCAO
+perc_clust_per_condition$Cond_SHAMvsMCAO <- factor(perc_clust_per_condition$Cond_SHAMvsMCAO, levels = orders[["Cond_SHAMvsMCAO"]])
+
+
+perc_clust_per_condition %<>% mutate("Cond_appr" = factor(case_when(
+   Cond_publication == "LiveCells_Sham" ~ "LiveCells",
+  Cond_publication == "LiveNuclei_Sham"~ "LiveNuclei",
+  Cond_publication == "FixedNuclei_Sham" ~ "FixedNuclei",
+  Cond_publication ==  "LiveCells_MCAO"~ "LiveCells",
+  Cond_publication == "LiveNuclei_MCAO" ~ "LiveNuclei",
+  Cond_publication == "FixedNuclei_MCAO" ~ "FixedNuclei"
+)))
+```
+
+```{r Stacked bar plot - condition vs percentage of cells,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+plots[["stacked_bar_mg"]] <- ggplot(perc_clust_per_condition, aes(x = Cond_appr, y = percent, fill = Cell_types_mg_abbr)) +
+  geom_bar(position = "stack", stat = "identity", color = "#2d1800", size = 0.3 ) + 
+  scale_fill_manual(values = col_list[["UMAP_mg"]]) +  
+  labs(x = "Conditions", y = "Relative proportion of cells (%)", fill = "Cell \ntypes") +
+ theme_mk +
+  scale_y_continuous(
+    expand = c(0, 0),               # Remove extra padding
+    breaks = seq(0, 100, by = 20))+  # Set y-axis breaks at 20-unit intervals
+  facet_grid(. ~ Cond_SHAMvsMCAO)+
+  remove_grid +
+   theme(
+    strip.text = element_text(size = 6),        # Customize strip text size
+    strip.background = element_blank(),         # Remove the facet strip background
+    legend.position = "right",
+    legend.margin = margin(t = -7.5),
+    plot.margin = margin(0,0,0,0),
+    axis.text.x = element_text(angle = 340, vjust = +0.1, hjust = +0.2),
+    axis.title.x = element_blank(), 
+    legend.text = element_text(margin = margin(t = 0, r = 1, b = 1, l = 1)),
+    legend.title = element_text(margin = margin(t = 0, r = 1, b = 6, l = 1))
+    )  
+
+
+plots[["stacked_bar_mg"]]
+```
+
+# Fig 02 C
+```{r Fig02_2nd line StackedBar Plot,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+ggsave(
+  filename = "results/2V_Fig02_2ndline_stack.svg",             
+  plot = plots[["stacked_bar_mg"]],        
+  device = "svg",                          
+  width = 7,                             
+  height = 4.5,                             
+  units = "cm"                            
+)
+```
+
+
+#ARM, IRM expression from Frigerio2019
+```{r}
+ARM_up <-  Symbol_to_ENSEMBL(c("Apoe", "Cst7", "Lpl", "Clec7a", "Lyz2", "Ccl3", "Lgals3bp", "Cd63", "H2-D1", "Ctsb"))
+seurat_mg <- AddModuleScore(seurat_mg, features = list(ARM_up), assay = "RNA", name = "ARM_up_")
+
+ARM_down <-  Symbol_to_ENSEMBL(c("Selplg", "Cd164", "P2ry12", "Crybb1", "Tmem119", "Stab1", "Ivns1abp", "Ecscr", "P2ry13", "Slc2a5"))
+seurat_mg <- AddModuleScore(seurat_mg, features = list(ARM_down), assay = "RNA", name = "ARM_down_")
+
+IRM_up <-  Symbol_to_ENSEMBL(c("Ifit3", "Ifitm3", "Rtp4", "Irf7", "Oasl2", "Ifi204",  "Usp18", "Ifi209", "Ifi27l2a", "Oas1a"))
+seurat_mg <- AddModuleScore(seurat_mg, features = list(IRM_up), assay = "RNA", name = "IRM_up_")
+
+CPM_up <-  Symbol_to_ENSEMBL(c("Mcm5", "Mcm2", "Mcm6", "Lig1", "Stmn1", "Tipin", "Hmgb2", "Dnmt1", "Cbx5", "Mcm7"))
+seurat_mg <- AddModuleScore(seurat_mg, features = list(CPM_up), assay = "RNA", name = "CPM_up_")
+```
+
+
+```{r Feature plots from Frigerio,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Define the features and their corresponding titles
+features <- c("ARM_up_1", "ARM_down_1", "IRM_up_1", "CPM_up_1")
+titles <- c("ARM \n(Sala Frigerio et al, 2019)", "HM \n(Sala Frigerio et al, 2019)", "IRM \n(Sala Frigerio et al, 2019)", "CPM \n(Sala Frigerio et al, 2019)")  # Custom titles
+
+# Define custom breaks for each feature
+custom_breaks <- list(
+  ARM_up_1 = c(0.5, 1.2),    # Example: min, mid, max values for "ARM_up_1"
+  ARM_down_1 = c(0.5,1.0),  # Example: min, mid, max values for "ARM_down_1"
+  IRM_up_1 = c(0.25, 0.75),   # Example: min, mid, max values for "IRM_up_1"
+  CPM_up_1 = c(0.08, 0.18)   # Example: min, mid, max values for "CPM_up_1"
+)
+
+
+# Loop over each feature to create the plots
+for (i in seq_along(features)) {
+  feature <- features[i]  # Get the current feature
+  plot_title <- titles[i]  # Get the corresponding custom title
+  
+  # Get custom breaks and labels for the current feature
+  breaks <- custom_breaks[[feature]]
+  labels <- custom_breaks[[feature]]
+
+  # Create the plot
+  plots[[paste0(feature, "_feature")]] <- FeaturePlot(
+    seurat_mg,
+    features = feature,
+    min.cutoff = "q10",
+    max.cutoff = "q90",
+    reduction = "umap.cca_rm", 
+    pt.size = 0.1
+  ) +
+    ggtitle(plot_title) + 
+    theme_umap +
+    remove_axes+
+    remove_grid +
+    theme(
+      legend.position = "bottom",             
+      legend.title = element_text(size = 6),  
+      legend.text = element_text(size = 6),   
+     legend.margin = margin(t = -10),
+      plot.margin = margin(0, 0, 4, 0),
+      legend.key.size = unit(2.5, "mm")
+    ) +
+    scale_color_gradientn(
+      name = "Average \nExpression",          
+      colors = c("#c6daeb", "#3A0956"),
+      breaks = breaks,                        # Use manually set breaks
+      labels = labels                         # Use manually set labels
+    )
+}
+plots[["feature"]] <- plots[["ARM_down_1_feature"]] + plots[["ARM_up_1_feature"]] +  plots[["IRM_up_1_feature"]] + plots[["CPM_up_1_feature"]] 
+plots[["feature"]]
+```
+
+# Fig 02 D
+```{r Fig02 Feature Plot,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_3rdline <- "
+ABCD
+"
+plots[["3rd_line"]] <- plots[["ARM_down_1_feature"]] + plots[["ARM_up_1_feature"]] +  plots[["IRM_up_1_feature"]] + plots[["CPM_up_1_feature"]] +
+   plot_layout(design = layout_3rdline) +
+   plot_annotation(
+    tag_levels = list(c('D', ''),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  
+                      )))
+
+
+plots[["3rd_line"]]
+
+ggsave(
+  filename = "results/2V_Fig02_3rdline_feature.svg",           
+  plot = plots[["3rd_line"]],          
+  device = "svg",                          
+  width = 16.9,                             
+  height = 5.5,                              
+  units = "cm"                            
+)
+```
+
+# Violin plots showing the expression of marker genes from Frigerio et al. (2019) in our dataset
+```{r Violin_plots,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Define the features for which you want to create violin plots
+features <- c("ARM_up_1", "ARM_down_1", "IRM_up_1", "CPM_up_1")
+titles <- c(
+  "ARM \n(Sala Frigerio et al, 2019)", 
+  "HM \n(Sala Frigerio et al, 2019)", 
+  "IRM \n(Sala Frigerio et al, 2019)", 
+  "CPM \n(Sala Frigerio et al, 2019)"
+)
+
+# Define your comparisons
+comparisons <- list(
+  "ARM_up_1" = list(c("HM1", "ARM"), c("HM2", "ARM") ),
+  "ARM_down_1" = list(c("HM1", "ARM"), c("HM2", "ARM")),
+  "IRM_up_1" = list(c("HM1", "IRM"), c("HM2", "IRM")),
+  "CPM_up_1" = list(c("HM1", "CPM"), c("HM2", "CPM"))
+)
+# Loop over each feature to create the plots
+for (i in seq_along(features)) {
+  feature <- features[i]  # Get the current feature
+  plot_title <- titles[i]
+  feature_comparisons <- comparisons[[feature]]  # Get the comparisons for the current feature
+  
+  # Calculate the maximum y-value in the data for scaling
+  max_y <- max(seurat_mg@meta.data[[feature]], na.rm = TRUE)
+  
+  # Define custom label.y values for each comparison
+  label_y_positions <- c(
+    0.8 * max_y,  # For the first comparison
+    0.9* max_y   # For the second comparison
+  )
+  
+  # Create the plot
+  plots[[paste0(feature, "_violin")]] <- VlnPlot(
+    seurat_mg,
+    features = feature,
+    group.by = "Cell_types_mg_abbr",
+    pt.size = 0.0,  # Adjust this value if needed
+    cols = col_list[["UMAP_mg"]]
+  ) +
+    ggtitle(plot_title) + 
+    theme_mk_title +
+    remove_grid +
+    theme(
+      axis.text.x = element_text(angle = 290, hjust = 0, vjust = 0.5), 
+      legend.position = "bottom",             
+      legend.title = element_text(size = 6),  
+      legend.text = element_text(size = 6),   
+      legend.margin = margin(t = -10),
+      plot.margin = margin(0, 0, 2, 0),
+      axis.title.x = element_blank()          
+    ) +
+    NoLegend() +
+    # Overlay box plot with white fill
+    geom_boxplot(width = 0.1, outlier.shape = NA, color = "black", fill = "white") +
+    labs(y = if (i == 2) "Average Expression" else NULL) +
+    # Add statistical comparison with adjusted spacing
+    stat_compare_means(
+      comparisons = feature_comparisons,                     # Use the comparisons specific to this feature
+      method = "wilcox.test",                                # Wilcoxon test
+      label = "p.signif",                                    # Display significance
+      method.args = list(paired = FALSE),                   # Specify unpaired test
+      hide.ns = FALSE,                                      # Display non-significant results
+      label.x.npc = "left",                                # Position labels horizontally
+      label.y = label_y_positions,                          # Use custom label.y positions
+      vjust = 0.5                                        # Adjust the vertical position of asterisks
+    )
+}
+
+# Combine the plots (example)
+plots[["violin"]] <- plots[["ARM_down_1_violin"]] + plots[["ARM_up_1_violin"]] +
+  plots[["IRM_up_1_violin"]] + plots[["CPM_up_1_violin"]]
+plots[["violin"]]
+```
+
+# Fig 02 E
+```{r Fig02_4th line Violin Plot,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_4thline <- "
+ABCD
+"
+plots[["4th_line"]] <- plots[["ARM_down_1_violin"]] + plots[["ARM_up_1_violin"]] +  plots[["IRM_up_1_violin"]] + plots[["CPM_up_1_violin"]] +
+     plot_layout(design = layout_3rdline) +
+   plot_annotation(
+    tag_levels = list(c('E', ''),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  
+                      )))
+
+
+plots[["4th_line"]]
+
+ggsave(
+  filename = "results/2V_Fig02_4thline_violin.svg",           
+  plot = plots[["4th_line"]],        
+  device = "svg",                          
+  width = 16.9,                              
+  height = 5.5,                              
+  units = "cm"                            
+)
+```

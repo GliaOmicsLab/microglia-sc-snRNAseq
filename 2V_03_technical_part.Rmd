@@ -1,0 +1,511 @@
+---
+title: "1DP_04_seurat_microglia_fig3"
+author: "Domi"
+date: "2024-08-20"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+Introduction
+This script is dedicated to visualizing processed data from **DP_00_all_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd** and **1DP_05_all_cells_LC_FN_raw_data_to_seurat_merged_integrated_UMAP.Rmd**. The processed data are represented using **violin and box plots** to illustrate reads in coding regions or exons; number of genes or UMIs per cell.
+
+
+
+```{r Load packages and lists,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("RColorBrewer"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("sctransform"))
+suppressMessages(library("scales"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("SeuratWrappers"))
+suppressMessages(library("reshape2"))
+suppressMessages(library("ComplexHeatmap"))
+suppressMessages(library("gridExtra"))
+suppressMessages(library("magrittr"))
+suppressMessages(library("patchwork"))
+suppressMessages(library("tidyr"))
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+#Read table with gene symbols end IDs
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)
+```
+
+```{r Load seurat object,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat <- readRDS("ws/1DP_00_seurat_merged_integrated_UMAP_all_cells.rds")
+```
+
+#Violin plots - w/o Sham and MCAO splitting - illustrate reads in coding regions or exons; number of genes or UMIs per cell
+```{r Violin plots for technical parameters_ALL CELLS  w/o SHAM and MCAO,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+DefaultAssay(seurat) <- "RNA"
+
+# Define the features and their corresponding y-axis titles
+features_list <- list(
+  "pct_coding" = "Reads to coding regions",
+  "pct_exon" = "Reads to exons",
+  "nFeature_RNA" = "Genes/UMI (20K Reads)",
+  "nCount_RNA" = "Total number of UMIs"
+)
+
+# List for y-axis titles
+y_axis_titles <- list(
+  "pct_coding" = "Reads in coding regions (%)",
+  "pct_exon" = " Reads in exons (%)",
+  "nFeature_RNA" = "Number of genes per cell",
+  "nCount_RNA" = " Number of UMIs per cell"
+)
+
+# Create the violin plot with box plots and custom y-axis titles
+for (feature in names(features_list)) {
+  plots[[feature]] <- VlnPlot(seurat, features = feature, 
+                              group.by = "Cond_preparation", 
+                              pt.size = 0, # Remove individual points
+                              cols = col_list[["Cond_preparation"]]) +  
+    labs(x = "Conditions", y = y_axis_titles[[feature]]) +  # Manually set y-axis title
+    theme_mk +
+    remove_grid +
+    theme(
+      strip.background = element_blank(),
+      axis.title.x = element_blank(),
+      axis.text.x = element_text(angle = 325, vjust = +0.1, hjust = +0.2)
+    ) +
+    NoLegend() +
+    # Overlay box plot with white fill
+    geom_boxplot(width = 0.1, outlier.shape = NA, color = "black", fill = "white")
+}
+
+    
+layout <- "
+ABCD
+"
+plots[["violin_w/oSM"]] <- plots[["nFeature_RNA"]] + plots[["nCount_RNA"]] + plots[["pct_coding"]] + plots[["pct_exon"]] + plot_layout(design =  layout)
+
+plots[["violin_w/oSM"]]
+```
+
+# Fig. 01 E
+```{r  Fig01 Violin Plots,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_3rdline <- "
+ABCD
+"
+plots[["3rd_line01"]] <- plots[["nFeature_RNA"]] + plots[["nCount_RNA"]] + plots[["pct_coding"]] + plots[["pct_exon"]] +  plot_layout(design = layout_3rdline, guides = "collect") +
+   plot_annotation(
+    tag_levels = list(c('E'),  # Use 'a' for automatic labels ('a', 'b', 'c', 'd')
+                      theme = theme(
+                       plot.tag = element_text(size = 7, face = "plain"))))
+          
+                     
+plots[["3rd_line01"]]
+
+ggsave(
+  filename = "results/2V_Fig01_3rdline_violin_wo_ShamMCAO.svg",              
+  plot = plots[["3rd_line01"]],          
+  device = "svg",                         
+  width = 16.9,                             
+  height = 4.5,                            
+  units = "cm"                          
+)
+```
+
+
+#Median values for violin plots w/o Sham and MCAO splitting
+```{r Median,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Extract metadata from the Seurat object as a data frame
+metadata_df <- seurat@meta.data
+
+# Create a data frame to store medians for all features
+medians_df <- data.frame()
+
+# Loop through the features to calculate medians
+for (feature in names(features_list)) {
+  
+  # Check if the feature exists in the metadata
+  if (feature %in% colnames(metadata_df)) {
+    
+    # Calculate the median for each condition
+    feature_medians <- metadata_df %>%
+      group_by(Cond_preparation) %>%  # Group by relevant conditions
+      summarise(median_value = median(.data[[feature]], na.rm = TRUE)) %>%
+      mutate(feature = feature)
+    
+    # Add the result to the medians_df
+    medians_df <- bind_rows(medians_df, feature_medians)
+    
+  } else {
+    message(paste("Feature", feature, "not found in metadata"))
+  }
+}
+
+# View the extracted medians
+print(medians_df)
+```
+
+#Violin plot w Sham and MCAO splitting
+```{r Violin plots for technical parameters,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+metadata_df <- read.csv("ws/1DP_00_seurat_all_cells_metadata_for_subset_mg.csv")
+seurat <- readRDS("ws/1DP_00_seurat_merged_integrated_UMAP_all_cells.rds")
+
+DefaultAssay(seurat) <- "RNA"
+
+
+#correct order of ShamvsMCAO
+#Cell_SHAMvsMCAO 
+metadata_df$Cond_SHAMvsMCAO <- factor(metadata_df$Cond_SHAMvsMCAO, levels = orders[["Cond_SHAMvsMCAO"]])
+metadata_df$Cond_SHAMvsMCAO %>% table() 
+# Define the features and their corresponding y-axis titles
+features_list <- list(
+  "pct_coding" = "Reads to coding regions",
+  "pct_exon" = "Reads to exons",
+  "nFeature_RNA" = "Genes/UMI (20K Reads)",
+  "nCount_RNA" = "Total number of UMIs"
+)
+
+# List for y-axis titles
+y_axis_titles <- list(
+  "pct_coding" = "Reads in coding regions (%)",
+  "pct_exon" = " Reads in exons (%)",
+  "nFeature_RNA" = "Number of genes per cell",
+  "nCount_RNA" = " Number of UMIs per cell"
+)
+
+
+# Create the violin plot with box plots and custom y-axis titles
+for (feature in names(features_list)) {
+  plots[[paste0(feature, "_w")]] <- VlnPlot(seurat, features = feature, 
+                              group.by = "Cond_preparation", 
+                              split.by = "Cond_publication",
+                              pt.size = 0, # Remove individual points
+                              cols = col_list[["Conditions"]]) +  
+    labs(x = "Condition",  y = y_axis_titles[[feature]]) +  # Manually set y-axis title
+    theme_mk +
+    remove_grid +
+   facet_grid(. ~ metadata_df$Cond_SHAMvsMCAO, drop = TRUE) + 
+    theme(
+      strip.background = element_blank(),
+       axis.title.x = element_blank(),
+      axis.text.x = element_text(angle = 325, vjust = +0.1, hjust = +0.2),
+      axis.title.y = element_text(margin = margin(t = -10)),
+      plot.title = element_blank()
+    ) +
+    NoLegend() +
+        # Overlay box plot with white fill
+    geom_boxplot(width = 0.1, outlier.shape = NA, color = "black", fill = "white")
+}
+
+      
+
+layout <- "
+AB
+CD
+"
+p <- plots[["pct_coding_w"]] + plots[["pct_exon_w"]] + plots[["nFeature_RNA_w"]] + plots[["nCount_RNA_w"]] +  plot_layout(design =  layout)
+p
+
+```
+ 
+#Median values for violin plots w Sham and MCAO splitting
+```{r Median,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Extract metadata from the Seurat object as a data frame
+metadata_df <- seurat@meta.data
+
+# Create a data frame to store medians for all features
+medians_df <- data.frame()
+
+# Loop through the features to calculate medians
+for (feature in names(features_list)) {
+  
+  # Check if the feature exists in the metadata
+  if (feature %in% colnames(metadata_df)) {
+    
+    # Calculate the median for each condition
+    feature_medians <- metadata_df %>%
+      group_by(Cond_preparation, Cond_publication) %>%  # Group by relevant conditions
+      summarise(median_value = median(.data[[feature]], na.rm = TRUE)) %>%
+      mutate(feature = feature)
+    
+    # Add the result to the medians_df
+    medians_df <- bind_rows(medians_df, feature_medians)
+    
+  } else {
+    message(paste("Feature", feature, "not found in metadata"))
+  }
+}
+
+# View the extracted medians
+print(medians_df)
+```
+
+#SFig 01 A
+```{r FigS 03,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_1st_line <- "
+AB
+CD
+"
+plots[["violin_wSM"]] <- plots[["nFeature_RNA_w"]] + plots[["nCount_RNA_w"]] + plots[["pct_coding_w"]] + plots[["pct_exon_w"]] +  plot_layout(design = layout_1st_line)  &
+  plot_annotation(
+    tag_levels = list(c('A', " "), 
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  
+                      )))
+
+plots[["violin_wSM"]]
+
+ggsave(
+  filename = "results/2V_FigS03_1stline_ViolinPlots_w_ShamMCAO.svg",             
+  plot = plots[["violin_wSM"]],          
+  device = "svg",                          
+  width = 16.9,                            
+  height = 9,                              
+  units = "cm"                             
+)
+
+```
+
+#Box plot -  genes per cell and UMIs per cell at different downsampling levels
+```{r Box plot,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+metadata <- read.csv("ws/1DP_00_seurat_all_cells_metadata_for_subset_mg.csv")
+seurat <- readRDS("ws/1DP_00_seurat_merged_integrated_UMAP_all_cells.rds")
+DefaultAssay(seurat) <- "RNA"
+
+
+
+metadata$Cond_preparation <- factor(metadata$Cond_preparation, levels = orders[["Cond_preparation"]])
+metadata$Cond_preparation %>% table()
+
+# Function to calculate the standard error of the mean
+sem <- function(x) {
+  return(sd(x, na.rm = TRUE) / sqrt(length(na.omit(x))))
+}
+
+# Extract and reshape the nGenes data
+nGenes_long <- metadata %>%
+  select(Cond_preparation, starts_with("nGenes_")) %>%
+  pivot_longer(cols = starts_with("nGenes_"), names_to = "read_pair", values_to = "nGenes") %>%
+  mutate(read_pair = as.numeric(gsub("nGenes_", "", read_pair))) %>%
+  drop_na(nGenes)
+
+# Summarize the nGenes data
+nGenes_summary <- nGenes_long %>%
+  group_by(Cond_preparation, read_pair) %>%
+  summarise(mean_nGenes = mean(nGenes, na.rm = TRUE),
+            lower_ci = mean_nGenes - qt(1 - 0.05 / 2, length(nGenes) - 1) * sem(nGenes),
+            upper_ci = mean_nGenes + qt(1 - 0.05 / 2, length(nGenes) - 1) * sem(nGenes),
+            .groups = 'drop')
+
+# Extract and reshape the nUMIs data
+nUMIs_long <- metadata %>%
+  select(Cond_preparation, starts_with("nUMIs_")) %>%
+  pivot_longer(cols = starts_with("nUMIs_"), names_to = "read_pair", values_to = "nUMIs") %>%
+  mutate(read_pair = as.numeric(gsub("nUMIs_", "", read_pair))) %>%
+  drop_na(nUMIs)
+
+# Summarize the nUMIs data
+nUMIs_summary <- nUMIs_long %>%
+  group_by(Cond_preparation, read_pair) %>%
+  summarise(mean_nUMIs = mean(nUMIs, na.rm = TRUE),
+            lower_ci = mean_nUMIs - qt(1 - 0.05 / 2, length(nUMIs) - 1) * sem(nUMIs),
+            upper_ci = mean_nUMIs + qt(1 - 0.05 / 2, length(nUMIs) - 1) * sem(nUMIs),
+            .groups = 'drop')
+
+# Custom color palette
+custom_colors <- brewer.pal(n = length(unique(nGenes_summary$Cond_preparation)), name = "Set1")
+
+
+# Custom function to add scientific notation-like labels
+add_sci_superscript <- function(x) {
+  sapply(x, function(value) {
+    numeric_value <- as.numeric(value)
+    if (!is.na(numeric_value)) {
+      exponent <- floor(log10(numeric_value))
+      base <- numeric_value / (10^exponent)
+      bquote(.(base) %*% 10^.(exponent))  # Format as base × 10^exponent
+    } else {
+      value  # Return non-numeric values as-is
+    }
+  })
+}
+
+
+
+
+# Boxplot for nGenes
+nGenes_long_filtered <- nGenes_long %>%
+  filter(read_pair <= 100000)
+
+
+plots[["nGenes_long"]] <- ggplot(nGenes_long_filtered, aes(x = as.factor(read_pair), y = nGenes, fill = Cond_preparation)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  scale_fill_manual(values = col_list[["Cond_preparation"]]) +
+  labs(x = "Read pairs", y = "Number of genes per cell") +
+  scale_x_discrete(labels = add_sci_superscript)+
+  coord_cartesian(ylim = c(0,7650))+
+  theme_mk +
+  remove_grid+
+ NoLegend()
+
+plots[["nGenes_long"]]
+
+
+# Boxplot for nUMIs
+
+nUMIs_long_filtered <- nUMIs_long %>%
+  filter(read_pair <= 100000)
+
+plots[["nUMIs_long"]] <- ggplot(nUMIs_long_filtered, aes(x = as.factor(read_pair), y = nUMIs, fill = Cond_preparation)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  scale_fill_manual(values = col_list[["Cond_preparation"]]) +
+  labs(x = "Read pairs", y = "Number of UMIs per cell")+
+  scale_x_discrete(labels = add_sci_superscript)+
+  scale_y_continuous(limits = c(0,44000))+
+  theme_mk+
+  remove_grid +
+  NoLegend()
+  
+
+plots[["nUMIs_long"]]
+```
+
+#SFig 01 C
+```{r SFig03,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout2ndline <- "
+AB
+"
+plots[["2ndline"]] <- plots[["nGenes_long"]] + plots[["nUMIs_long"]] +  plot_layout(guides = "collect", design = layout2ndline) &  # Collect legends from all plots
+  theme(
+    legend.position = "right",           
+    legend.justification = "center",      
+    legend.margin = margin(t = +5),      
+    legend.key.size = unit(0.5, "cm"),
+    legend.title = element_blank()
+  ) &
+  plot_annotation(
+    tag_levels = list(c('B', " "),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  # Customize tag size and appearance
+                      )))
+
+plots[["2ndline"]]
+
+ggsave(
+  filename = "results/2V_FigS03_2ndline_boxplot_UMI_detected_genes.svg",              # Name of the file
+  plot = plots[["2ndline"]],          # The plot object to save
+  device = "svg",                          # Specify the output format (png, pdf, svg)
+  width = 16.9,                              # Width of the image
+  height = 4.5,                              # Height of the image
+  units = "cm"                            # Units for width and height 
+)
+```
+
+#Violin - replicate - illustrate reads in coding regions or exons; number of genes or UMIs per cell
+```{r Violin plots for technical parameters_ALL CELLS  w/o SHAM and MCAO,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_val <- readRDS("ws/1DP_00_val_seurat_SCT_normalised_orders.rds")
+
+DefaultAssay(seurat_val) <- "RNA"
+
+features_list <- list(
+  "pct_coding" = "Reads to coding regions",
+  "pct_exon" = "Reads to exons",
+  "nFeature_RNA" = "Genes/UMI (20K Reads)",
+  "nCount_RNA" = "Total number of UMIs"
+)
+
+# List for y-axis titles
+y_axis_titles <- list(
+  "pct_coding" = "Reads in coding regions (%)",
+  "pct_exon" = " Reads in exons (%)",
+  "nFeature_RNA" = "Number of genes per cell",
+  "nCount_RNA" = " Number of UMIs per cell"
+)
+
+
+# Create the violin plot with box plots and custom y-axis titles
+for (feature in names(features_list)) {
+  plots[[paste0(feature, "_val")]] <- VlnPlot(seurat_val, features = feature, 
+                              group.by = "Cond_preparation", 
+                              split.by = "Cond_publication_val",
+                              pt.size = 0, # Remove individual points
+                              cols = col_list[["Conditions_violin_val"]]) +  
+    labs(x = "Condition",  y = y_axis_titles[[feature]]) +  # Manually set y-axis title
+    theme_mk +
+    remove_grid +
+    theme(
+      strip.background = element_blank(),
+       axis.title.x = element_blank(),
+      axis.text.x = element_text(angle = 325, vjust = +0.1, hjust = +0.2),
+      axis.title.y = element_text(margin = margin(t = -10)),
+      plot.title = element_blank()
+    ) +
+    NoLegend() +
+        # Overlay box plot with white fill
+    geom_boxplot(width = 0.1, outlier.shape = NA, color = "black", fill = "white")
+}
+
+  
+
+layout <- "
+AB
+CD
+"
+p <- plots[["pct_coding_val"]] + plots[["pct_exon_val"]] + plots[["nFeature_RNA_val"]] + plots[["nCount_RNA_val"]] +  plot_layout(design =  layout)
+p
+```
+
+# SFig 01 B
+```{r Fig03_2ndline,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_2nd_line <- "
+ABCD
+"
+plots[["violin_wSM_val"]] <- plots[["nFeature_RNA_val"]] + plots[["nCount_RNA_val"]] + plots[["pct_coding_val"]] + plots[["pct_exon_val"]] +  plot_layout(design = layout_2nd_line)  &
+  plot_annotation(
+    tag_levels = list(c('C', " "),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain") 
+                      )))
+
+plots[["violin_wSM_val"]]
+
+ggsave(
+  filename = "results/2V_FigS03_1stline_ViolinPlots_w_ShamMCAOval.svg",             
+  plot = plots[["violin_wSM_val"]],         
+  device = "svg",                         
+  width = 16.9,                              
+  height = 4.5,                              
+  units = "cm"                             
+)
+```
+
+#Median values for violin plots 
+```{r Median,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Extract metadata from the Seurat object as a data frame
+metadata_df <- seurat_val@meta.data
+
+# Create a data frame to store medians for all features
+medians_df <- data.frame()
+
+# Loop through the features to calculate medians
+for (feature in names(features_list)) {
+  
+  # Check if the feature exists in the metadata
+  if (feature %in% colnames(metadata_df)) {
+    
+    # Calculate the median for each condition
+    feature_medians <- metadata_df %>%
+      group_by(Cond_preparation) %>%  # Group by relevant conditions
+      summarise(median_value = median(.data[[feature]], na.rm = TRUE)) %>%
+      mutate(feature = feature)
+    
+    # Add the result to the medians_df
+    medians_df <- bind_rows(medians_df, feature_medians)
+    
+  } else {
+    message(paste("Feature", feature, "not found in metadata"))
+  }
+}
+
+# View the extracted medians
+print(medians_df)
+```

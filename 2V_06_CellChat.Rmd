@@ -1,0 +1,191 @@
+---
+title: "2V_06_CellChat"
+author: "Domi"
+date: "2024-11-28"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Introduction
+This script is dedicated to visualizing processed data from **1DP_04_CellChat.Rmd**. The processed data are represented using **Bar plots and Chord diagram** to illustrate CellChat results.
+
+```{r Load packages,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("CellChat"))
+suppressMessages(library("ComplexHeatmap"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("reshape2"))
+suppressMessages(library("ggrepel"))
+suppressMessages(library("gridExtra"))
+suppressMessages(library("patchwork"))
+suppressMessages(library("magrittr"))
+suppressMessages(library("scales"))
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)#File generated with zUMI
+```
+
+```{r Load data,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+cell_chat_merged <- readRDS("ws/1DP_04_CellChat_allconditions.rds")
+```
+
+#Bar plots for technical parameters of CellChat
+```{r Compare the total number of interactions and interaction strength,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+plots[["cellchat_no_inter"]] <- compareInteractions(cell_chat_merged, show.legend = FALSE, group = c(1, 2, 3), color.use = col_list[["Cond_preparation_wo_names"]], size.text = 1.5, width = 0.2) + 
+  theme_mk +
+  remove_grid +
+  theme(axis.text.x = element_text(angle = 330, vjust = +0.1, hjust = +0.2)) +
+  NoLegend()+
+  geom_bar(stat = "identity", color = "black", size = 0.3)+  # Black borders
+  ylim(0,NA) +  # Ensures y-axis starts at 0
+ scale_y_continuous(expand = expansion(mult = c(0, 0.05)))
+
+plots[["cellchat_no_inter"]] 
+```
+
+#Fig 04 A
+```{r Fig04_A,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+ggsave(
+  filename = "results/2V_Fig04_3rdline_cellchat_intert.svg",              
+  plot = plots[["cellchat_no_inter"]],          
+  device = "svg",                          
+  width = 4,                              
+  height = 5.7,                             
+  units = "cm"                            
+)
+```
+
+```{r Compare interaction strength,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+plots[["cellchat_strength_inter"]] <- compareInteractions(cell_chat_merged, show.legend = F, group = c(1,2,3), measure = "weight", color.use = col_list[["Cond_preparation_wo_names"]], size.text = 1.5) + 
+  theme_mk +
+  remove_grid +
+  theme(axis.text.x = element_text(angle = 330, vjust = +0.1, hjust = +0.2)) +
+  NoLegend()+
+  geom_bar(stat = "identity", color = "black", size = 0.3) + # Black borders
+  ylim(0,NA) +  # Ensures y-axis starts at 0
+ scale_y_continuous(expand = expansion(mult = c(0, 0.05)))
+
+plots[["cellchat_strength_inter"]]
+```
+
+#Fig 04 A
+```{r Fig04_B,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+ggsave(
+  filename = "results/2V_Fig04_3rdline_cellchat_strength_inter.svg",              
+  plot = plots[["cellchat_strength_inter"]],          
+  device = "svg",                         
+  width = 4,                             
+  height = 5.7,                           
+  units = "cm"                            
+)
+```
+
+
+#Identified singaling pathways
+```{r Compare the overall information flow of each signaling pathway,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+cell_chat_merged_LCFN <- readRDS("ws/1DP_04_CellChat_LC_FN_conditions.rds")
+
+plots[["pathway_cellchat"]] <- rankNet(cell_chat_merged_LCFN, mode = "comparison", stacked = T,  comparison = c(1, 2), color.use = col_list[["Conditions_cellchat"]], do.stat = TRUE) +
+  theme_mk +
+  remove_grid+ 
+  theme(
+    legend.position = "right",
+  )
+
+plots[["pathway_cellchat"]]
+```
+
+#Fig 04 C
+```{r Fig04,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_1stline <- "
+A
+"
+plots[["3rd_line"]] <- plots[["pathway_cellchat"]] +
+ plot_layout(guides = "collect", design = layout_1stline) &  
+    plot_annotation(
+    tag_levels = list(c('C', " "),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain") 
+                      )))
+  
+
+plots[["3rd_line"]]
+
+
+ggsave(
+  filename = "results/2V_Fig04_3rdline_cellchat_pathwayr.svg",              
+  plot = plots[["3rd_line"]],          
+  device = "svg",                         
+  width = 7.5,                              
+  height = 5.7,                             
+  units = "cm"                            
+)
+```
+
+#Chord diagram with automatic saving
+#Fig 04 B
+```{r Differential number of interactions or interaction strength among different cell types,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Load CellChat objects
+object.list <- list(
+  LiveCells = readRDS("ws/1DP_04_LiveCells_MCAO&Sham_cellchat_processed_RNA.rds"),
+  LiveNuclei = readRDS("ws/1DP_04_LiveNuclei_MCAO&Sham_cellchat_processed_RNA.rds"),
+  FixedNuclei = readRDS("ws/1DP_04_FixedNuclei_MCAO&Sham_cellchat_processed_RNA.rds")
+)
+
+# Define the specific cell types of interest
+group.cellType <- c("HM1", "HM2", "ARM", "IRM", "INTER")
+group.cellType <- factor(group.cellType, levels = group.cellType)
+
+# Map the cell types to each CellChat object in the list
+object.list <- lapply(object.list, function(x) {
+  mergeInteractions(x, group.cellType)
+})
+
+# Merge the CellChat objects into one merged object
+cellchat <- mergeCellChat(object.list, add.names = names(object.list))
+#> Merge the following slots: 'data.signaling','images','net', 'netP','meta', 'idents', 'var.features' , 'DB', and 'LR'.
+
+# Get the maximum weights for visualizing interactions
+weight.max <- getMaxWeight(object.list, slot.name = c("idents", "net", "net"), attribute = c("idents", "count", "count.merged"))
+
+
+# Create circular network plots and save each directly in the loop
+for (i in 1:length(object.list)) {
+  
+  # Define the filename for saving
+  file_name <- paste0("results/", names(object.list)[i], "_interaction_network.svg")
+  
+  # Open an SVG device to save the plot
+  svg(file_name, width = 10/2.54, height = 10/2.54)
+  
+  # Generate the plot
+  netVisual_circle(
+    object.list[[i]]@net$count.merged,        # Interaction counts for merged networks
+    color.use = col_list[["cellchat"]],
+    weight.scale = TRUE,                      # Scale weights
+    label.edge = TRUE,                        # Display edge labels
+    edge.weight.max = weight.max[3],          # Maximum edge weight
+    edge.width.max = 12,                        # Maximum edge width
+    margin = 0.4,
+    vertex.label.cex = 0.4,
+    edge.label.cex = 0.3, #interaction numbers
+    arrow.size = 0.3
+  )
+  
+  # Manually add the title AFTER generating the plot
+ # title(main = paste0(names(object.list)[i]), cex.main = 0.9,font.main = 1)
+  
+  # Close the SVG device
+  dev.off()
+  
+  # Store the plot in the list
+  plots[[names(object.list)[i]]] <- recordPlot()
+}
+
+```
