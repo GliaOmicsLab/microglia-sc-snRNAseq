@@ -47,11 +47,13 @@ The numbering indicates the sequential order of steps within each category, ensu
 ---
 
 ## Description of markdown scripts 
-Basic data processing in R - quality control, normalisation, integration, dimensional reduction, clustering and annotation
+
+### Basic data processing in R - quality control, normalisation, integration, dimensional reduction, clustering and annotation
 1. **1DP_00_all_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd** - analysis of all cells obtained in the experiments
 2. **1DP_01_mg_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd** - this analysis specifically targets microglia
 3. **1DP_05_all_cells_LC_FN_raw_data_to_seurat_merged_integrated_UMAP.Rmd** - 2nd independent experiment 
-Targeted analysis
+
+### Targeted analysis
 4. **1DP_02_DEG.Rmd**
 5. **1DP_03_GO.Rmd**
 6. **1DP_04_CellChat.Rmd**
