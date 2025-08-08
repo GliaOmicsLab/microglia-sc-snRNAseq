@@ -1,0 +1,103 @@
+---
+title: "2V_05_GO"
+author: "Domi"
+date: "2024-11-27"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+Introduction
+This script is dedicated to visualizing processed data from **1DP_03_GO.Rmd**. The processed data are represented using **tree plots** to illustrate GO terms.
+
+```{r Load packages,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("ggplot2"))
+suppressMessages(library("RColorBrewer"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("ComplexHeatmap"))
+suppressMessages(library("here"))
+suppressMessages(library("gridExtra"))
+suppressMessages(library("patchwork"))
+suppressMessages(library("clusterProfiler"))
+suppressMessages(library("enrichplot"))
+suppressMessages(library("org.Mm.eg.db"))
+suppressMessages(library("msigdbr"))
+suppressMessages(library("simplifyEnrichment"))
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)
+
+#problems with treeplot - it needs to load these functions separately
+nodeid.tbl_tree <- utils::getFromNamespace("nodeid.tbl_tree", "tidytree")
+rootnode.tbl_tree <- utils::getFromNamespace("rootnode.tbl_tree", "tidytree")
+offspring.tbl_tree <- utils::getFromNamespace("offspring.tbl_tree", "tidytree")
+offspring.tbl_tree_item <- utils::getFromNamespace(".offspring.tbl_tree_item", "tidytree")
+child.tbl_tree <- utils::getFromNamespace("child.tbl_tree", "tidytree")
+parent.tbl_tree <- utils::getFromNamespace("parent.tbl_tree", "tidytree")
+```
+
+```{r Load files,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Read pairwise result files into a list
+pairwise_files <- list(
+  LCvsFN = "ws/1DP_03_GOanalysis_LCvsFNscatterplot.rds"
+)
+
+# Read RDS files and store them in a named list
+pairwise_res_list <- list()
+for (name in names(pairwise_files)) {
+  pairwise_res_list[[name]] <- readRDS(pairwise_files[[name]])
+}
+```
+
+```{r Tree plots for GO terms,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Define color palette for clusters
+cluster_colors <- c("#EFD3D7", "#A5A1C0", "#748DA3", "#DCE4F9", "#B9C6F2")
+
+# Initialize plots list
+plots <- list()
+
+# Loop through the pairwise result list to generate tree plots
+for (name in names(pairwise_res_list)) {
+  pairwise_res <- pairwise_res_list[[name]]  # Access the result for the current condition
+  
+  # Generate tree plot
+  plots[[paste0("tree_plot", name)]] <- treeplot(
+    pairwise_res,
+    hclust_method = "average",  # Clustering method for hierarchical clustering
+    clusterPanel.params = list(
+      clusterPanel = "pie",       # Display cluster panel as pie charts
+      pie = "Count",              # Use count for pie representation
+      legend_n = 2                # Number of elements in the pie legend
+    ),
+    fontsize = 4,                 # Font size for cluster label
+    offset.params = list(
+      bar_tree = rel(2),          # Adjust bar-tree distance
+      extend = 0.3,               # Extend bar length
+      tiplab = rel(1.5)           # Adjust tip label offset
+    ),
+    cluster.params = list(
+      color = cluster_colors      # Cluster color palette
+    )
+  ) +
+    theme(
+      legend.position = "bottom"  # Set legend position
+    )
+}
+
+# Display one of the plots (example: LCvsFN)
+plots[["tree_plotLCvsFN"]]
+```
+
+# Fig 03 E
+```{r Fig03,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+ggsave(
+  filename = "results/2V_Fig03_3rdline_treeplotLCvsFN.svg",              # Name of the file
+  plot = plots[["tree_plotLCvsFN"]],          # The plot object to save
+  device = "svg",                          # Specify the output format (png, pdf, svg)
+  width = 14,                              # Width of the image
+  height = 7,                              # Height of the image
+  units = "cm"                            # Units for width and height 
+)
+```

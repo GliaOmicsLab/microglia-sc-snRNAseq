@@ -1,0 +1,345 @@
+---
+title: "2V_SF01_Technical"
+author: "Domi"
+date: "2024-09-13"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+## Introduction
+
+This script provides visualizations that demonstrate the presence of debris and doublets—technical artifacts—within  specific cluster.
+
+It is dedicated to visualizing preprocessed data generated from **1DP_01_mg_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd**. The processed data are visualized using **UMAP plots**, **violin plots**, and **FACS plots** to illustrate clustering and assess data quality.
+
+
+```{r Load packages and lists, message=FALSE, warning=FALSE, paged.print=TRUE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("NormExpression"))
+suppressMessages(library("DropletUtils"))
+suppressMessages(library("pheatmap"))
+suppressMessages(library("RColorBrewer"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("sctransform"))
+suppressMessages(library("DT"))
+suppressMessages(library("scales"))
+suppressMessages(library("ggrepel"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("SeuratWrappers"))
+suppressMessages(library("scmap"))
+suppressMessages(library("DoubletFinder"))
+suppressMessages(library("scCATCH"))
+suppressMessages(library("reshape2"))
+suppressMessages(library("CellChat"))
+suppressMessages(library("ComplexHeatmap"))
+suppressMessages(library("here"))
+suppressMessages(library("gridExtra"))
+suppressMessages(library("clustree"))
+suppressMessages(library("magrittr"))
+suppressMessages(library("patchwork"))
+suppressMessages(library("purrr"))
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)#File generated with zUMIS
+```
+
+#UMAP
+```{r UMAP_all_microglia, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_mg <- readRDS("ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells_brm.rds")
+DefaultAssay(seurat_mg) <- "SCT"
+
+plots[["UMAP_all_mg_rm"]] <- DimPlot(
+  seurat_mg,
+  reduction = "umap.cca",
+  group.by = "cca_clusters_sbst",
+  pt.size = 0.1,
+  cols =col_list[["UMAP_mg_rm"]]
+) + 
+ ggtitle("All conditions") + 
+  theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))  
+
+
+plots[["UMAP_all_mg_rm"]]
+```
+
+```{r UMAP_all_cells_condition_LiveCells, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_filtered_LiveCells <- subset(seurat_mg,  LiveCells != "LiveNuclei + FixedNuclei")
+
+plots[["UMAP_mg_LiveCells_rm"]] <- DimPlot(
+  seurat_filtered_LiveCells,
+  reduction = "umap.cca",
+ group.by = "LiveCells",
+  pt.size = 0.1,
+  cols = col_list[["UMAPLiveCells"]]
+) + 
+  ggtitle("LiveCells") + 
+ theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))  
+
+
+plots[["UMAP_mg_LiveCells_rm"]]
+rm(seurat_filtered_LiveCells)
+```
+
+```{r UMAP_all_cells_condition_LiveNuclei, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_filtered_LiveNuclei <- subset(seurat_mg, LiveNuclei != "LiveCells + FixedNuclei")
+
+
+plots[["UMAP_mg_LiveNuclei_rm"]] <- DimPlot(
+  seurat_filtered_LiveNuclei,
+  reduction = "umap.cca",
+  group.by = "LiveNuclei",
+  pt.size = 0.1,
+  cols = col_list[["UMAPLiveNuclei"]]
+) + 
+   ggtitle("LiveNuclei") + 
+  theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))
+
+plots[["UMAP_mg_LiveNuclei_rm"]]
+rm(seurat_filtered_LiveNuclei)
+
+```
+
+```{r UMAP_all_cells_condition_FixNuclei, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_filtered_FixedNuclei <- subset(seurat_mg, FixedNuclei != "LiveCells + LiveNuclei")
+
+
+plots[["UMAP_mg_FixedNuclei_rm"]] <- DimPlot(
+  seurat_filtered_FixedNuclei,
+  reduction = "umap.cca",
+  group.by = "FixedNuclei",
+  pt.size = 0.1,
+  cols = col_list[["UMAPFixedNuclei"]]
+) + 
+   ggtitle("FixedNuclei") + 
+  theme_umap +
+  remove_grid +
+  remove_axes+
+  guides(colour = guide_legend(override.aes = list(size = 1)))  
+
+
+plots[["UMAP_mg_FixedNuclei_rm"]]
+rm(seurat_filtered_FixedNuclei)
+```
+
+#SFig 03 A - UMAP visualisation in combination of 4 UMAPs
+```{r UMAP saving, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout <- "
+AB
+CD
+"
+plots[["UMAP_clust_rm"]] <- plots[["UMAP_all_mg_rm"]] + plots[["UMAP_mg_LiveCells_rm"]] + plots[["UMAP_mg_LiveNuclei_rm"]] + plots[["UMAP_mg_FixedNuclei_rm"]] +  plot_layout(design =  layout)&
+  plot_annotation(
+    tag_levels = list(c('A', " "), 
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain") 
+                      )))
+
+
+plots[["UMAP_clust_rm"]]
+
+ggsave(
+  filename = "results/2V_FigS02_UMAPs_mg_rm.svg",             
+  plot = plots[["UMAP_clust_rm"]],          
+  device = "svg",                          
+  width = 8,                             
+  height = 9,                             
+  units = "cm"                            
+)
+
+```
+
+#FACS paramters
+```{r FACS _ for LiveCellsFCS.AvsSSC.A, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+metadata_df <- read.csv("ws/1DP_01_mg_seurat_metadata_brm.csv")
+metadata_df$cca_clusters_sbst <- as.factor(metadata_df$cca_clusters_sbst)
+
+# Remove cells which have values 0 because they weren't measured with index sorting
+metadata_df <- metadata_df %>%
+  filter(FSC.A != 0)
+
+# Subset for only "LiveCells"
+conditions_to_plot <- metadata_df %>%
+  subset(Cond_preparation == "LiveCells")
+
+# Create a named vector of colors matching the clusters
+cluster_colors <- col_list[["UMAP_mg_rm"]]
+names(cluster_colors) <- levels(metadata_df$cca_clusters_sbst)
+
+# Define the pairs of variables to plot
+variable_pairs <- list(
+  c("FSC.A", "SSC.A"),
+  c("FSC.A", "FSC.H")
+)
+
+
+# Assuming conditions_to_plot is a data frame or filtered Seurat object with columns FSC.A, SSC.A
+plots[["LiveCellsFCS.AvsSSC.A"]] <- ggplot(conditions_to_plot, aes(x = `FSC.A`, y = `SSC.A`)) +
+    geom_point(aes(color = cca_clusters_sbst), size = 0.1) +  
+    scale_color_manual(values = cluster_colors) +  
+    labs(
+      title = "LiveCells",    
+      x = "FSC.A",             
+      y = "SSC.A",             
+      color = "Clusters"     
+    ) +
+    theme_mk_title +               
+    remove_grid +            
+    scale_x_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale()), 
+                       breaks = scales::pretty_breaks(n = 3)) +  
+    scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale()), 
+                       limits = c(0, 160000)) +  
+    NoLegend()
+
+
+plots[["LiveCellsFCS.AvsSSC.A"]]
+
+```
+
+```{r FACS _ for LiveCellsFCS.AvsFCS.H, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+plots[["LiveCellsFCS.AvsFSC.H"]] <- ggplot(conditions_to_plot, aes(x = `FSC.A`, y = `FSC.H`)) +
+    geom_point(aes(color = cca_clusters_sbst), size = 0.1) +  
+    scale_color_manual(values = cluster_colors) + 
+    labs(
+      title = "LiveCells",    
+      x = "FSC.A",             
+      y = "FSC.H",             
+      color = "Clusters"     
+    ) +
+    theme_mk_title +               
+    remove_grid +           
+    scale_x_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale()), 
+                       breaks = scales::pretty_breaks(n = 3)) +  
+    scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale()), 
+                       limits = c(0, 160000)) + 
+  NoLegend()
+
+
+plots[["LiveCellsFCS.AvsFSC.H"]]
+
+```
+
+# SFig 03 B
+```{r Fig02 FACS, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#FACS plots for LiveCells
+layout <- "
+AB
+"
+# Combine the two plots and bring the legend closer to the charts
+plots[["FACS"]] <- (plots[["LiveCellsFCS.AvsSSC.A"]] + 
+      plots[["LiveCellsFCS.AvsFSC.H"]]) + 
+      plot_layout(guides = "collect") &  # Collect and combine legends
+      theme(
+        legend.position = "bottom",  
+        legend.margin = margin(t = -10),  # Reduce the margin between legend and plots
+        plot.margin = margin(10, 10, 10, 10)  # Adjust plot margins to make space for the legend
+      ) &  
+      guides(colour = guide_legend(nrow = 1, byrow = TRUE, override.aes = list(size = 1)))
+
+
+# View the combined plot with the legend closer to the charts
+plots[["FACS"]]
+
+
+
+ggsave(
+  filename = "results/2V_FigS02_FACS.svg",              
+  plot = plots[["FACS"]],          
+  device = "svg",                          
+  width = 9.5,                              
+  height = 5.5,                             
+  units = "cm"                            
+)
+```
+
+
+#Violin plots - percentages of ribosomes
+```{r Violin_plots percent.ribLiveNUclei, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_live_nuclei <- subset(seurat_mg, Cond_preparation == "LiveNuclei")
+Idents(seurat_live_nuclei) <- "cca_clusters_sbst"
+
+plots[["percent.ribLiveNUclei"]] <- VlnPlot(seurat_live_nuclei, features = "percent.rib", 
+                              pt.size = 0, # Remove individual points
+                              cols = col_list[["UMAP_mg_rm"]],
+                              split.by = "cca_clusters_sbst") +  
+    labs(title = "LiveCells",
+         x = "Clusters",
+         y = "Ribosomes (%)"
+        ) +
+  theme_mk_title +
+  remove_grid+
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)),limits = c(0, 11.5))+ # Start y-axis at 0 with a bit of padding
+  theme(
+    strip.background = element_blank(),
+    axis.text.x = element_text(vjust = +2),
+    axis.title.y = element_text(margin = margin(t = -10))
+    )+
+  ggtitle("LiveNuclei") +
+  NoLegend()
+
+
+plots[["percent.ribLiveNUclei"]]
+
+```
+
+
+```{r Violin_plots percent.ribFixedNUclei, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_fixed_nuclei <- subset(seurat_mg, Cond_preparation == "FixedNuclei")
+Idents(seurat_fixed_nuclei) <- "cca_clusters_sbst"
+
+
+plots[["percent.ribFixedNUclei"]] <- VlnPlot(seurat_fixed_nuclei, features = "percent.rib", 
+                              pt.size = 0, # Remove individual points
+                              cols = col_list[["UMAP_mg_rm"]],
+                              split.by = "cca_clusters_sbst") +  
+    labs(x = "Clusters",
+         y = NULL
+        ) +
+  theme_mk_title +
+  remove_grid+
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)), limits = c(0, 11.5))+ # Start y-axis at 0 with a bit of padding
+  theme(
+    strip.background = element_blank(),
+    axis.text.x = element_text(vjust = +2)
+    )+
+  ggtitle("FixedNuclei") +
+  NoLegend()
+
+
+plots[["percent.ribFixedNUclei"]]
+```
+
+#SFig 03CD
+```{r Fig02 violin, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout <- "
+AB
+"
+plots[["violin"]] <- plots[["percent.ribLiveNUclei"]] + plots[["percent.ribFixedNUclei"]] +  plot_layout(design =  layout)&
+  plot_annotation(
+    tag_levels = list(c('C', 'D'),  # Use 'a' for automatic labels ('a', 'b', 'c', 'd')
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  # Customize tag size and appearance
+                      )))
+plots[["violin"]]
+
+ggsave(
+  filename = "results/2V_FigS02_violin.svg",              
+  plot = plots[["violin"]],          
+  device = "svg",                          
+  width = 9,                          
+  height = 4.5,                            
+  units = "cm"                           
+)
+```

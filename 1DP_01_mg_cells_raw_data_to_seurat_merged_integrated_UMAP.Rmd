@@ -1,0 +1,394 @@
+---
+title: "scRNA-Seq"
+author: "Domi"
+date: "09 01 2025"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Introduction
+
+This script focuses on processing data specifically for the microglia population. Microglia were extracted from the original dataset based on UMAP clustering, allowing for targeted analysis of their transcriptional profiles.
+Subsequent data curration followed similar approach as used for the full dataset (1DP_00_all_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd), ensuring consistency in processing and analysis.
+
+Here are steps applied after subsetting microglia population from all isolated cells.
+**Description**:
+        **1. Data Loading and Preprocessing**
+            - Importing raw data from multiple samples.
+            - subsetting microglia population.
+            - Quality control filtering (e.g., feature count thresholds, mitochondrial gene content).
+            
+        **2. Normalization and Scaling**
+            - Log-normalization of raw counts.
+            - Data scaling for downstream analysis.
+            - SCT normalization
+            
+        **3. Dimensionality Reduction and Integration**
+            - **PCA** (Principal Component Analysis) to reduce dimensionality.
+            - **UMAP** (Uniform Manifold Approximation and Projection) for 2D visualization.
+			      - **CCAIntegration** - Correction of batch effects to create a unified object.
+			
+       **4. Clustering and Annotation**
+			       - Visualization of clusters in UMAP space.
+			       - Identification of cell types based on known marker genes.
+			       - Assignment of cell identity labels to clusters.	
+
+
+Below are the key files prepared for downstream analysis which will used in followed markdown files:
+
+1. **Seurat Object (Microglia Cells)**  
+		- **File**: `ws/1DP_01_mg_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd`  
+		- **Description**: Contains micorglia cells captured across isolation protocols (**LiveCells**, **LiveNuclei**, **FixedNuclei**) and integrated using Seurat’s CCAIntegration method.
+
+	2. **Metadata for visualisaiton**  
+		- **File**: `ws/1DP_01_mg_seurat_metadata_brm.csv`  
+		- **Description**:  Metadata from the Seurat object used for visualisation of non-standard cluster.
+
+	3. **Seurat Object (without cluster 4)**  
+		- **File**: `ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells.rds`  
+		- **Description**:  Contains microglia cells captured across isolation protocols (**LiveCells**, **LiveNuclei**, **FixedNuclei**) and integrated using Seurat’s CCAIntegration metho but without non-standard cluster.
+
+	4. **Metadata for Microglia Cells without non-standard cluster**  
+		- **File**: `ws/1DP_01_mg_seurat_metadata_brm.csv`  
+		- **Description**:  Metadata from the Seurat object used for visualisation.
+
+	5. **Cell Population Markers**  
+		- **File**: `results/1DP_00_markers_mg_cells.xlsx`  
+		- **Description**: Contains marker genes identified for each microglia population across protocols.
+
+Load required package and functions
+```{r Load libraries, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("DropletUtils"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("sctransform"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("reshape2"))
+suppressMessages(library("magrittr"))
+suppressMessages(library("openxlsx"))
+
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+```
+
+Load the files generated as output from the processing of zUMIs on the raw data
+```{r Load files, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#Read output from zUMIs
+zumis_output <- readRDS("data/Smartseq3xpress.dgecounts.rds")
+#Read all metadata from preprocessed data and subset only to MG clusters
+metadata <- read.csv("ws/1DP_00_seurat_all_cells_metadata_for_subset_mg.csv", sep = ",")
+rownames(metadata) <- metadata$X
+#Remove columns that would be duplicated in the new processing of microglia-only data instead of all-cell data. 
+metadata <- metadata[metadata$cca_clusters %in% c("0","1","2","10"), c("Project", "Condition", "Mouse", "Gate", "Cycles", "Age", "Position", "Row", "Column", "Sort_Plate", "Index_Plate",  "FSC.A", "FSC.W", "FSC.H", "SSC.A", "SSC.W", "SSC.H", "FITC.A", "APC.A", "PE.A", "DAPI.A", "Ambiguity", "Exon", "Intergenic", "Intron", "Unmapped", "User", "nreadpairs", "nNontagged", "nUMItag", "UMIfraction", "nGenes", "nGenesUMIs", "nUMIs", "pct_coding", "pct_exon", "nGenes_10000", "nGenesUMIs_10000", "nUMIs_10000", "nGenes_20000", "nGenesUMIs_20000", "nUMIs_20000", "nGenes_50000", "nGenesUMIs_50000", "nUMIs_50000", "nGenes_100000", "nGenesUMIs_100000", "nUMIs_100000", "percent.mt","percent.rib","percent.ERCC", "percent.SIRV", "percent.spike", "cca_clusters")]
+
+
+#Read table with gene symbols and Ensembl IDs
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)
+```
+
+Prepare seurat object with microglia cells
+```{r Preparetion of seurat object, eval=TRUE, message=FALSE, warning=FALSE}
+seurat_mg <- CreateSeuratObject(counts = zumis_output$umicount$inex$downsampling$downsampled_20000[,colnames(zumis_output$umicount$inex$downsampling$downsampled_20000) %in% rownames(metadata)])
+metadata <- metadata[colnames(seurat_mg),]
+
+seurat_mg@meta.data <- cbind(seurat_mg@meta.data,metadata)
+
+#Remove unnecessary objects
+rm(metadata, zumis_output)
+```
+
+Subset for individual isolation protocols - dataset is composed of three isolation protocols
+```{r Subset for experiments, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_mg_raw <- seurat_mg
+seurat_mg <- as.list(NULL)
+
+seurat_mg[["Cd11b_cells"]] <- subset(seurat_mg_raw, subset = Project %in% c("Cd11b_small_experiment"))
+seurat_mg[["PU1_fixed_nuclei"]] <- subset(seurat_mg_raw, subset = Project %in% c("mouse_fixed_nuclei"))
+seurat_mg[["Cd11b_live_nuclei"]] <- subset(seurat_mg_raw, subset = Project %in% c("mouse_live_nuclei"))
+```
+
+SCT Normalization, PCA Calculation, and Data Integration, UMAP
+```{r Transfromation, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#Merge objects without integration
+seurat_mg_merged <- merge(x = seurat_mg[[1]], y = list(seurat_mg[[2]],seurat_mg[[3]]))
+
+#Filter out spike
+seurat_mg_merged <- seurat_mg_merged[!(rownames(seurat_mg_merged) %in% c(grep("^ERCC-",rownames(seurat_mg_merged),value = TRUE),
+                                                                grep("^SIRV",rownames(seurat_mg_merged),value = TRUE))), ]
+
+#Normalize using SC Transfomration
+seurat_mg_merged <- SCTransform(seurat_mg_merged, verbose = TRUE, return.only.var.genes = FALSE, method = "glmGamPoi",
+                                       assay = "RNA",n_genes = NULL, variable.features.n = 3000)
+
+rm(seurat_mg, seurat_mg_raw)
+
+#PCA
+DefaultAssay(seurat_mg_merged) <- "SCT" 
+seurat_mg_merged <- RunPCA(seurat_mg_merged, npcs = 50, verbose = FALSE, assay = "SCT", reduction.name = "pca")
+
+#Integration - CCA - different types of data
+seurat_mg_merged <- IntegrateLayers(seurat_mg_merged, assay = "SCT", method = CCAIntegration, normalization.method = "SCT", orig.reduction = "pca", new.reduction = "integrated.cca", verbose = TRUE)
+
+#Calculate UMAP and clusters for each integration method
+seurat_mg_merged <- RunUMAP(seurat_mg_merged, reduction = "integrated.cca",
+                         dims = 1:50, verbose = TRUE, reduction.name = "umap.cca")
+seurat_mg_merged <- FindNeighbors(seurat_mg_merged, reduction = "integrated.cca",
+                               dims = 1:50, verbose = TRUE, graph.name = c("cca.nn","cca.snn"))
+seurat_mg_merged <- FindClusters(seurat_mg_merged, resolution = 0.85, verbose = TRUE,
+                              cluster.name = "cca_clusters_sbst", graph.name = "cca.snn")
+```
+
+Metadata Variable Preparation for Seurat Object
+```{r Preparation of columns with needed variables, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# COND_PUBLICATION
+seurat_mg_merged@meta.data %<>% mutate("Cond_publication" = factor(
+  case_when(
+    Condition == "D7" ~ "LiveCells_MCAO",
+    Condition == "D7_fixed" ~ "FixedNuclei_MCAO",
+    Condition == "D7_live" ~ "LiveNuclei_MCAO",
+    Condition == "SHAM" ~ "LiveCells_Sham",
+    Condition == "SHAM_fixed" ~ "FixedNuclei_Sham",
+    Condition == "SHAM_live" ~ "LiveNuclei_Sham"
+  )
+))
+
+
+#check the table 
+seurat_mg_merged$Cond_publication %>% table()
+
+# Ensure the 'Cond_publication' column exists and convert it to a factor with the desired order
+seurat_mg_merged@meta.data$Cond_publication <- factor(seurat_mg_merged@meta.data$Cond_publication, levels = orders[["Cond_publication"]])
+seurat_mg_merged@meta.data$Cond_publication %>% table()
+
+
+#COND_SHAMvsMCAO
+seurat_mg_merged@meta.data %<>% mutate("Cond_SHAMvsMCAO" = factor(
+  case_when(
+    Cond_publication == "LiveCells_Sham" ~ "Sham",
+    Cond_publication == "LiveNuclei_Sham" ~ "Sham",
+    Cond_publication == "FixedNuclei_Sham" ~ "Sham",
+    Cond_publication == "LiveCells_MCAO" ~ "MCAO",
+    Cond_publication == "LiveNuclei_MCAO" ~ "MCAO",
+    Cond_publication == "FixedNuclei_MCAO" ~ "MCAO"
+  )
+))
+seurat_mg_merged$Cond_SHAMvsMCAO %>% table()
+
+# Ensure the 'Cond_SHAMvsMCAO' column exists and convert it to a factor with the desired order
+seurat_mg_merged@meta.data$Cond_SHAMvsMCAO <- factor(seurat_mg_merged@meta.data$Cond_SHAMvsMCAO , levels = orders[["Cond_SHAMvsMCAO"]])
+seurat_mg_merged@meta.data$Cond_SHAMvsMCAO %>%table()
+
+
+
+#COND_PREPARATION
+seurat_mg_merged@meta.data %<>% mutate("Cond_preparation" = factor(
+  case_when(
+    Cond_publication == "LiveCells_Sham" ~ "LiveCells",
+    Cond_publication == "LiveNuclei_Sham" ~ "LiveNuclei",
+    Cond_publication == "FixedNuclei_Sham" ~ "FixedNuclei",
+    Cond_publication ==  "LiveCells_MCAO" ~ "LiveCells",
+    Cond_publication == "LiveNuclei_MCAO" ~ "LiveNuclei",
+    Cond_publication == "FixedNuclei_MCAO" ~ "FixedNuclei"
+  )
+))
+seurat_mg_merged$Cond_preparation %>% table()
+
+# Ensure the 'Cond_preparation' column exists and convert it to a factor with the desired order
+seurat_mg_merged@meta.data$Cond_preparation <- factor(seurat_mg_merged@meta.data$Cond_preparation , levels = orders[["Cond_preparation"]])
+seurat_mg_merged@meta.data$Cond_preparation %>% table()
+
+seurat_mg_merged@meta.data %<>% mutate("LiveCells" = factor(
+  case_when(
+    Cond_publication == "LiveCells_Sham" ~ "Sham",
+    Cond_publication == "LiveNuclei_Sham" ~ "LiveNuclei + FixedNuclei",
+    Cond_publication == "FixedNuclei_Sham" ~ "LiveNuclei + FixedNuclei",
+    Cond_publication ==  "LiveCells_MCAO" ~ "MCAO",
+    Cond_publication == "LiveNuclei_MCAO" ~ "LiveNuclei + FixedNuclei",
+    Cond_publication == "FixedNuclei_MCAO" ~ "LiveNuclei + FixedNuclei"
+  )
+))
+
+seurat_mg_merged$LiveCells %>% table()
+
+# Ensure the 'LiveCells' column exists and convert it to a factor with the desired order
+seurat_mg_merged@meta.data$LiveCells <- factor(seurat_mg_merged@meta.data$LiveCells, levels = orders[["LiveCells"]])
+seurat_mg_merged$LiveCells %>% table()
+
+seurat_mg_merged@meta.data %<>% mutate("LiveNuclei" = factor(
+  case_when(
+    Cond_publication == "LiveNuclei_Sham" ~ "Sham",
+    Cond_publication == "LiveNuclei_MCAO" ~ "MCAO",
+    Cond_publication == "LiveCells_Sham" ~ "LiveCells + FixedNuclei",
+    Cond_publication == "FixedNuclei_Sham" ~ "LiveCells + FixedNuclei",
+    Cond_publication ==  "LiveCells_MCAO" ~ "LiveCells + FixedNuclei",
+    Cond_publication == "FixedNuclei_MCAO" ~ "LiveCells + FixedNuclei"
+  )
+))
+
+seurat_mg_merged$LiveNuclei %>% table()
+
+# Ensure the 'LiveNuclei' column exists and convert it to a factor with the desired order
+seurat_mg_merged@meta.data$LiveNuclei <- factor(seurat_mg_merged@meta.data$LiveNuclei, levels = orders[["LiveNuclei"]])
+seurat_mg_merged$LiveNuclei %>% table()
+
+
+seurat_mg_merged@meta.data %<>% mutate("FixedNuclei" = factor(
+  case_when(
+    Cond_publication == "LiveCells_Sham" ~ "LiveCells + LiveNuclei",
+    Cond_publication == "LiveNuclei_Sham" ~ "LiveCells + LiveNuclei",
+    Cond_publication == "FixedNuclei_Sham" ~ "Sham",
+    Cond_publication ==  "LiveCells_MCAO" ~ "LiveCells + LiveNuclei",
+    Cond_publication == "LiveNuclei_MCAO" ~ "LiveCells + LiveNuclei",
+    Cond_publication == "FixedNuclei_MCAO" ~ "MCAO"
+  )
+))
+seurat_mg_merged@meta.data$FixedNuclei <- factor(seurat_mg_merged@meta.data$FixedNuclei, levels = orders[["FixedNuclei"]])
+seurat_mg_merged$FixedNuclei %>% table()
+
+saveRDS(seurat_mg_merged,"ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells_brm.rds")
+```
+
+Metadata
+```{r Prepare data frame of meta.data, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+metadata_mg <- seurat_mg_merged@meta.data
+
+# View the first few rows of the metadata
+head(metadata_mg)
+
+# Ensure metadata is a data frame
+metadata_mg_df <- as.data.frame(metadata_mg)
+
+#filtered NA in cca_clusters_sbst
+metadata_mg_df_filt <- metadata_mg_df %>%
+  filter(!is.na(cca_clusters_sbst))
+
+# Save metadata to a CSV file
+write.csv(metadata_mg_df, file = "ws/1DP_01_mg_seurat_metadata_brm.csv", row.names = FALSE)
+rm(metadata_mg, metadata_mg_df_filt)
+```
+
+Remove cluster with NON-STANDARD properties 
+```{r Remove "Debris" from seurat_mg, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_mg_clean <- subset(seurat_mg_merged, subset =  cca_clusters_sbst != "4")
+```
+
+SCT Normalization, PCA Calculation, and Data Integration, UMAP
+```{r SCTransform Normalization, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#Normalize using SCTransfom
+seurat_mg_clean <- SCTransform(seurat_mg_clean, verbose = TRUE, return.only.var.genes = FALSE, method = "glmGamPoi",
+                                       assay = "RNA",n_genes = NULL, variable.features.n = 3000, new.assay.name = "SCT_rm")
+
+# Integration
+seurat_mg_clean <- IntegrateLayers(seurat_mg_clean, assay = "SCT_rm", method = CCAIntegration, normalization.method = "SCT",
+                                 orig.reduction = "pca", new.reduction = "integrated.cca_rm", verbose = TRUE)
+
+
+# PCA counting}
+DefaultAssay(seurat_mg_clean) <- "SCT_rm"
+all.genes <- row.names(seurat_mg_clean)
+seurat_mg_clean <- RunPCA(seurat_mg_clean, npcs = 50, verbose = FALSE, features = all.genes)
+
+#Checking of PC number
+plots[["elb_seurat"]] <- ElbowPlot(seurat_mg_clean, ndims = 50)
+plots[["elb_seurat"]]
+DimHeatmap(seurat_mg_clean, dims = 1:10, cells = 300, balanced = TRUE) #it doesn't want to be saved in the list of plots
+
+seurat_mg_clean <- RunUMAP(seurat_mg_clean, reduction = "integrated.cca_rm",
+                         dims = 1:50, verbose = TRUE, reduction.name = "umap.cca_rm")
+seurat_mg_clean <- FindNeighbors(seurat_mg_clean, reduction = "integrated.cca_rm",
+                               dims = 1:50, verbose = TRUE, graph.name = c("cca.nn_rm","cca.snn_rm"))
+seurat_mg_clean <- FindClusters(seurat_mg_clean, resolution = 0.8, verbose = TRUE, graph.name = "cca.snn_rm", cluster.name = "cca_clusters_sbst_rm")
+
+saveRDS(seurat_mg_clean,"ws/1DP_01_seurat_mg_filtered_rm_SCT.rds")
+```
+
+
+```{r Preparation of columns with needed variables, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# ANNOTATION OF MICROGLIA
+seurat_mg_clean@meta.data %<>% mutate("Cell_types_mg_abbr" = factor(case_when(
+  cca_clusters_sbst_rm == 0 ~ "HM1",
+  cca_clusters_sbst_rm == 1 ~ "HM2",
+  cca_clusters_sbst_rm == 2 ~ "INTER",
+  cca_clusters_sbst_rm == 3 ~ "ARM",
+  cca_clusters_sbst_rm == 4 ~ "IRM",
+  cca_clusters_sbst_rm == 5 ~ "DIV"
+  )))
+
+#check the table 
+seurat_mg_clean$Cell_types_mg_abbr %>% table()
+
+# Ensure the 'Cell_types_mg_abbr' column exists and convert it to a factor with the desired order
+seurat_mg_clean$Cell_types_mg_abbr <- factor(seurat_mg_clean@meta.data$Cell_types_mg_abbr, levels = orders[["Cell_types_mg_abbr"]])
+seurat_mg_clean$Cell_types_mg_abbr %>% table()
+
+saveRDS(seurat_mg_clean,"ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells.rds")
+```
+
+Metadata Variable Preparation for Seurat Object 
+Extract metadata for microglia subpopulation after removing of nonstandard cluster
+```{r Prepare data frame of meta.data, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+
+metadata <- seurat_mg_clean@meta.data
+
+# View the first few rows of the metadata
+head(metadata)
+
+# Ensure metadata is a data frame
+metadata_df <- as.data.frame(metadata)
+
+#filtered NA in Cell_types_abr
+metadata_df_filt <- metadata_df %>%
+  filter(!is.na(Cell_types_mg_abbr))
+
+# Save metadata to a CSV file
+write.csv(metadata_df, file = "ws/1DP_01_mg_seurat_metadata.csv", row.names = FALSE)
+rm(metadata, metadata_df_filt)
+```
+
+Microglia markers
+```{r Markers, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+DefaultAssay(seurat_mg_clean) <- "RNA" 
+Idents(seurat_mg_clean) <- "Cell_types_mg_abbr"
+
+#Normalization of data
+seurat_mg_clean <- JoinLayers(seurat_mg_clean)
+all.genes.RNA <- rownames(seurat_mg_clean)
+seurat_mg_clean <- NormalizeData(seurat_mg_clean, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_mg_clean <- ScaleData(seurat_mg_clean, features = all.genes.RNA)
+
+mg_markers <- FindAllMarkers(seurat_mg_clean, 
+                              min.pct = 0.8, only.pos = TRUE, verbose = TRUE, assay = "RNA") %>% split(f = .[["cluster"]]) #split()
+#Insert column with gene_symbols
+for (subpopulation in names(mg_markers)) {
+   sub_data <- mg_markers[[subpopulation]]
+  ensembl_ids <- sub_data[, "gene"] 
+  gene_symbols <- ENSEMBL_to_Symbol(ensembl_ids)
+  sub_data$gene_symbol <- gene_symbols
+  mg_markers[[subpopulation]] <- sub_data
+}
+
+
+
+# Create a workbook
+wb <- createWorkbook()
+
+# Loop through each subpopulation in CD11b_markers
+for (subpopulation in names(mg_markers)) {
+  # Extract the data frame for the subpopulation
+  sub_data <- mg_markers[[subpopulation]]
+  
+  # Add a new sheet named after the subpopulation
+  addWorksheet(wb, subpopulation)
+  
+  # Write the data frame into the sheet
+  writeData(wb, subpopulation, sub_data)
+}
+
+# Save the workbook to an Excel file
+saveWorkbook(wb,"results/1DP_00_markers_mg_cells.xlsx", overwrite = TRUE)
+```

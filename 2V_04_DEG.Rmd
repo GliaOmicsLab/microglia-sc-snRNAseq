@@ -1,0 +1,560 @@
+---
+title: "2V_04_DEG"
+author: "Domi"
+date: "2024-11-27"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+Introduction
+This script is dedicated to visualizing processed data from **1DP_02_DEG.Rmd**. The processed data are represented using **Volcano and Scatter plots** to illustrate DEG analysis.
+
+#Loading of improtant files
+```{r Load packages,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("sctransform"))
+suppressMessages(library("ggrepel"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("magrittr"))
+suppressMessages(library("patchwork"))
+suppressMessages(library("scales"))
+suppressMessages(library("tidyr"))
+suppressMessages(library("openxlsx"))
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)#File generaetd with zUMIS
+```
+
+#Volcano Plots for comparison DEG in HM and ARM across isolation protocols
+```{r Volcano,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Load the combined RDS file containing all conditions
+de_results_all <- readRDS("ws/1DP_02_DEG_ARMvsHM_allconditions.rds")
+
+# Define genes of interest - ARM Frigerio2019
+genes_of_interest <- c(
+  "Apoe", "Cst7", "Lpl", "Clec7a", "Lyz2", "Ccl3", "Lgals3bp", "Cd63", "H2-D1",  
+  "Ctsb", "Cd9", "Ctsl", "Fth1", "Ctsz", "Cd52", "Ctsd", "B2m", "Eef1a1", "Cd83", 
+  "Ccl6", "Hif1a", "Tyrobp", "Serpine2", "Cadm1", "H2-K1", "Npc2", "Pkm", 
+  "Aldoa", "Tpi1", "Pld3", "Gusb", "Plek", "Ldha"
+)
+
+# Define protocol-specific colors (ordered for use with list indices)
+protocol_colors <- c("#5F7048", "#8a5c1a", "#d9741a")  # Dark Green, Brown, Orange
+
+# Get protocol names
+protocol_names <- names(de_results_all)
+
+# Initialize an empty list to store plots
+plots <- list()
+
+# Loop through each protocol
+for (i in seq_along(protocol_names)) {
+  protocol <- protocol_names[i]
+  
+  # Extract DE results
+  de_results <- de_results_all[[protocol]]
+  
+  # Map ENSEMBL IDs to gene symbols
+  de_results$gene_symbol <- gene_symbol$gene_name[match(rownames(de_results), gene_symbol$gene_id)]
+  
+  # Add significance
+  de_results$significant <- with(de_results, p_val_adj < 0.05 & abs(avg_log2FC) > 1)
+  
+  # Add coloring category
+  de_results$color_group <- ifelse(
+    de_results$avg_log2FC > -1 & de_results$avg_log2FC < 1,
+    "lowFC",
+    ifelse(de_results$significant, "significant", "nonsig")
+  )
+  
+  # Filter genes of interest
+  gene_inter <- de_results %>%
+    filter(gene_symbol %in% genes_of_interest)
+  
+  # Volcano plot
+  plots[[protocol]] <- ggplot(data = de_results,
+                              aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+    geom_point(aes(colour = color_group),
+               alpha = 0.6,
+               shape = 16,
+               size = 1) +
+    geom_point(data = gene_inter,
+               aes(x = avg_log2FC, y = -log10(p_val_adj)),
+               shape = 21,
+               fill = "#4E6374",
+               color = "#4E6374",
+               size = 1,
+               stroke = 0.2) +
+   geom_label_repel(data = gene_inter %>% filter(significant),
+                     aes(label = gene_symbol),
+                      box.padding   = 0.22,
+                     label.padding = 0.10,
+                     point.padding = 0.1,
+                     color = "#4E6374",
+                     size = 1.8,
+                     max.iter = 20000,
+                     max.overlaps = 20,
+                     force = 2,
+                     nudge_y = 1,
+                     label.size = 0,
+                     segment.size = 0.1) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "#B6C7DB", linewidth = 0.1) +
+    geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "#B6C7DB", linewidth = 0.1) +
+    labs(
+      title = paste(protocol, "\n(HM vs ARM)"),
+      x = "Log2 Fold Change",
+      y = if (i == 1) "-Log10 Adjusted P-value" else NULL
+    ) +
+    scale_color_manual(
+      values = c(
+        "nonsig" = "gray80",
+        "lowFC" = "gray80",
+        "significant" = protocol_colors[i]
+      ),
+      guide = "none"
+    ) +
+    scale_x_continuous(limits = c(-6.5, 9.1)) +
+    scale_y_continuous(limits = c(-5, 70)) +
+    theme_mk_title +
+    remove_grid
+  
+  print(paste("Volcano plot created for:", protocol))
+}
+
+# Combine plots for viewing
+plots[["volcano"]] <- plots[["LiveCells"]] + plots[["LiveNuclei"]] + plots[["FixedNuclei"]]
+plots[["volcano"]]
+```
+
+# Fig 03 A
+```{r Fig03_1stline,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_1stline <- "
+ABC
+"
+plots[["1st_line"]] <-  plots[["LiveCells"]] + plots[["LiveNuclei"]] + plots[["FixedNuclei"]] +
+  plot_layout(guides = "collect", design = layout_1stline) &  
+  theme(
+    legend.position = "bottom",           
+    legend.justification = "center",      
+    legend.margin = margin(t = -10)       
+  ) &
+  plot_annotation(
+    tag_levels = list(c('A', " "),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  
+                      )))
+
+plots[["1st_line"]]
+
+
+ggsave(
+  filename = "results/2V_Fig03_1stline_VolcanoPlots.svg",              
+  plot = plots[["1st_line"]],          
+  device = "svg",                         
+  width = 16.9,                              
+  height = 7,                              
+  units = "cm"                           
+)
+```
+
+
+#SCATTER PLOTS - differences in mean expression of genes in ARM population
+#Scatter plot LiveCells vs FixedNuclei in ARM
+```{r Table for ScatterPlot LiveCells vs FixedNuclei,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#gene_table - helper for faster dividing of ARM genes into slots for ScatterPlot
+gene_table <- readRDS("ws/1DP_03_gene_table_ScatterPlot_LCvsFN.rds")
+
+list_gene_names_ARM_sym <- c(
+  "Apoe", "Cst7", "Lpl", "Clec7a", "Lyz2", "Ccl3", "Lgals3bp", "Cd63", "H2-D1",  
+  "Ctsb", "Cd9", "Ctsl", "Fth1", "Ctsz", "Cd52", "Ctsd", "B2m", "Eef1a1", "Cd83", 
+  "Ccl6", "Hif1a", "Tyrobp", "Serpine2", "Cadm1", "H2-K1", "Npc2", "Pkm", 
+  "Aldoa", "Tpi1", "Pld3", "Gusb", "Plek", "Ldha"
+)
+
+
+# Assuming `gene_table` is your data frame
+# Initialize vectors for each category
+up2_fn <- gene_table$`Upregulated >2x in FN`[gene_table$`Upregulated >2x in FN` %in% list_gene_names_ARM_sym]
+up1_fn <- gene_table$`Upregulated 1-2x in FN`[gene_table$`Upregulated 1-2x in FN` %in% list_gene_names_ARM_sym]
+up0_fn <- gene_table$`Upregulated 0-1x in FN`[gene_table$`Upregulated 0-1x in FN` %in% list_gene_names_ARM_sym]
+up2_lc <- gene_table$`Upregulated >2x in LC`[gene_table$`Upregulated >2x in LC` %in% list_gene_names_ARM_sym]
+up1_lc <- gene_table$`Upregulated 1-2x in LC`[gene_table$`Upregulated 1-2x in LC` %in% list_gene_names_ARM_sym]
+up0_lc <- gene_table$`Upregulated 0-1x in LC`[gene_table$`Upregulated 0-1x in LC` %in% list_gene_names_ARM_sym]
+
+# Combine results into a named list for clarity
+result <- list(
+  "Upregulated >2x in FN" = up2_fn,
+  "Upregulated 1-2x in FN" = up1_fn,
+  "Upregulated 0-1x in FN" = up0_fn,
+  "Upregulated >2x in LC" = up2_lc,
+  "Upregulated 1-2x in LC" = up1_lc,
+  "Upregulated 0-1x in LC" = up0_lc
+)
+
+# Print results
+print(result)
+```
+
+```{r Scatter plot LiveCells vs FixedNuclei,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+topT <- readRDS("ws/1DP_03_top_genes_ARM_file.rds")
+
+# Define gene groups with their specific colors
+gene_groups <- list(
+  up2 = list(genes = Symbol_to_ENSEMBL(c("Fth1", "Eef1a1")), color = "#5B1F3D"),
+  up1 = list(genes = Symbol_to_ENSEMBL(c("Cd52", "Apoe", "Ctsd", "Ctsz", "Ccl6", "Npc2", "Ctsl", "Ctsb", "Tpi1", "Cd63", "Cd9", "Tyrobp", "Aldoa","Pkm", "B2m", "Ldha", "Cst7", "Lyz2", "H2-D1")), color = "#A7586D"),
+  up0 = list(genes = Symbol_to_ENSEMBL(c("Ccl3",  "Pld3", "Cd83", "Lpl", "Plek",  "Gusb", "Serpine2", "Lgals3bp", "H2-K1", "Clec7a")), color = "#8aa5bf")
+)
+
+# Add a `group` and `label_color` column to `topT`
+topT$group <- NA
+topT$label_color <- NA
+for (group in names(gene_groups)) {
+  genes <- toupper(gene_groups[[group]]$genes)
+  topT$group[toupper(rownames(topT)) %in% genes] <- group
+  topT$label_color[toupper(rownames(topT)) %in% genes] <- gene_groups[[group]]$color
+}
+
+
+plots[["scatter_plotLCvsFN"]] <- ggplot(topT, aes(x = LiveCells, y = FixedNuclei)) +
+  labs(
+    x = "Log normalized mean expression - LiveCells",
+    y = "Log normalized mean expression - FixedNuclei"
+  ) +
+  geom_abline(slope = 1, intercept = c(0, -2, -1, 1, 2), linetype = c(1, 3, 3, 3, 3)) +
+  
+  # Base points with color based on differences
+  geom_point(
+    aes(color = ifelse(
+      LiveCells - FixedNuclei > 1, "#5F7048",      # Strongly up in LiveCells
+      ifelse(
+        FixedNuclei - LiveCells > 1, "#d9741a",       # Strongly up in FixedNuclei
+        "#A1B8D4"                                 # Similar expression
+      )
+    )),
+    size = 0.5,
+    na.rm = TRUE
+  ) +
+  
+  # Highlight gene groups
+  geom_point(data = subset(topT, !is.na(group)), aes(color = group), size = 0.5) +
+  
+
+  # Add gene labels only for up1 and up2
+  geom_label_repel(
+    data = subset(topT, group %in% c("up1", "up2")),
+    aes(
+      label = ENSEMBL_to_Symbol(rownames(subset(topT, group %in% c("up1", "up2")))),
+      color = label_color
+    ),
+    box.padding = 0.22,
+    label.padding = 0.1,
+    point.padding = 0.1,
+    size = 1.8,
+    max.iter = 20000,
+    max.overlaps = 20,
+    show.legend = FALSE,
+    label.size = 0
+  )+
+  
+  # Update the manual color scale with more colors
+  scale_color_manual(
+    values = c(
+      "#2F3C23",    # labels >2 LiveCells
+      "#5F7048",       # points >1 LiveCells
+     # "#7286AA",    # labels for genes <1
+      "gray80",    # points < 1
+      "#2F3C23",       # labels >1 LiveCells
+      "#d9741a", # points >1 FixedNuclei
+      "#a3a3a3",    # points for genes <1
+      "#2F3C23",       # points for genes >1 LiveCells
+      "#2F3C23"   # points for genes >2 LiveCells
+    )
+  ) +
+  theme_mk +
+  remove_grid +
+  theme(
+    legend.position = "none"  
+  )
+
+plots[["scatter_plotLCvsFN"]]
+```
+
+#Scatter plot LiveNuclei vs FixedNuclei in ARM
+```{r Table for ScatterPlot LiveNuclei vs FixedNuclei,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#gene_table - helper for faster dividing of ARM genes into slots for ScatterPlot
+gene_table <- readRDS("ws/1DP_03_gene_table_ScatterPlot_LNvsFN.rds")
+
+#filtering for ARM genes
+
+list_gene_names_ARM_sym <- c(
+  "Apoe", "Cst7", "Lpl", "Clec7a", "Lyz2", "Ccl3", "Lgals3bp", "Cd63", "H2-D1",  
+  "Ctsb", "Cd9", "Ctsl", "Fth1", "Ctsz", "Cd52", "Ctsd", "B2m", "Eef1a1", "Cd83", 
+  "Ccl6", "Hif1a", "Tyrobp", "Serpine2", "Cadm1", "H2-K1", "Npc2", "Pkm", 
+  "Aldoa", "Tpi1", "Pld3", "Gusb", "Plek", "Ldha"
+)
+
+# Assuming `gene_table` is your data frame
+# Initialize vectors for each category
+up2_fn <- gene_table$`Upregulated >2x in FN`[gene_table$`Upregulated >2x in FN` %in% list_gene_names_ARM_sym]
+up1_fn <- gene_table$`Upregulated 1-2x in FN`[gene_table$`Upregulated 1-2x in FN` %in% list_gene_names_ARM_sym]
+up0_fn <- gene_table$`Upregulated 0-1x in FN`[gene_table$`Upregulated 0-1x in FN` %in% list_gene_names_ARM_sym]
+up2_ln <- gene_table$`Upregulated >2x in LN`[gene_table$`Upregulated >2x in LN` %in% list_gene_names_ARM_sym]
+up1_ln <- gene_table$`Upregulated 1-2x in LN`[gene_table$`Upregulated 1-2x in LN` %in% list_gene_names_ARM_sym]
+up0_ln <- gene_table$`Upregulated 0-1x in LN`[gene_table$`Upregulated 0-1x in LN` %in% list_gene_names_ARM_sym]
+
+# Combine results into a named list for clarity
+result <- list(
+  "Upregulated >2x in FN" = up2_fn,
+  "Upregulated 1-2x in FN" = up1_fn,
+  "Upregulated 0-1x in FN" = up0_fn,
+  "Upregulated >2x in LN" = up2_ln,
+  "Upregulated 1-2x in LN" = up1_ln,
+  "Upregulated 0-1x in LN" = up0_ln
+)
+
+# Print results
+print(result)
+```
+
+```{r Scatter plot LiveNuclei vs FixedNuclei,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Load gene expression table for LN vs FN
+topT_LNvsFN <- readRDS("ws/1DP_03_top_genes_ARM_file.rds")
+
+# Define gene groups with their specific colors
+gene_groups_LNvsFN <- list(
+  up1 = list(genes = Symbol_to_ENSEMBL(c("Lyz2")), color = "#A7586D"),
+  up0 = list(genes = Symbol_to_ENSEMBL(c(
+    "Cd83", "Ctsz", "Ccl6", "Hif1a", "Ctsl", "Serpine2", "Cd9", "Lgals3bp", 
+    "B2m", "H2-K1", "Cst7", "H2-D1", "Clec7a", "Cd52", "Ccl3", "Apoe",  
+    "Pld3", "Ctsd", "Lpl", "Plek", "Npc2", "Ctsb", "Tpi1", "Fth1",  
+    "Cd63", "Gusb", "Tyrobp", "Aldoa", "Cadm1", "Pkm", "Eef1a1", "Ldha"
+  )), color = "#8aa5bf")
+)
+
+# Add `group` and `label_color` to a copy of topT
+topT_LNvsFN$group <- NA
+topT_LNvsFN$label_color <- NA
+for (group in names(gene_groups_LNvsFN)) {
+  genes <- toupper(gene_groups_LNvsFN[[group]]$genes)
+  topT_LNvsFN$group[toupper(rownames(topT_LNvsFN)) %in% genes] <- group
+  topT_LNvsFN$label_color[toupper(rownames(topT_LNvsFN)) %in% genes] <- gene_groups_LNvsFN[[group]]$color
+}
+
+# Create the plot
+plots[["scatter_plotLNvsFN"]] <- ggplot(topT_LNvsFN, aes(x = LiveNuclei, y = FixedNuclei)) +
+  labs(
+    x = "Log normalized mean expression - LiveNuclei",
+    y = "Log normalized mean expression - FixedNuclei"
+  ) +
+  geom_abline(slope = 1, intercept = c(0, -2, -1, 1, 2), linetype = c(1, 3, 3, 3, 3)) +
+
+  # Base points
+  geom_point(
+    aes(color = ifelse(
+      LiveNuclei - FixedNuclei > 1, "#8a5c1a",
+      ifelse(FixedNuclei - LiveNuclei > 1, "#d9741a", "#A1B8D4")
+    )),
+    size = 0.5,
+    na.rm = TRUE
+  ) +
+
+  # Highlight gene groups
+  geom_point(data = subset(topT_LNvsFN, !is.na(group)), aes(color = group), size = 0.5) +
+  
+   # Add labels only for up1
+  geom_label_repel(
+    data = subset(topT_LNvsFN, group %in% c("up1")),
+    aes(
+      label = ENSEMBL_to_Symbol(rownames(subset(topT_LNvsFN, group %in% c("up1")))),
+      color = label_color
+    ),
+    box.padding = 0.22,
+    label.padding = 0.1,
+    point.padding = 0.1,
+    size = 1.8,
+    max.iter = 20000,
+    max.overlaps = 20,
+    show.legend = FALSE,
+    label.size = 0
+  ) +
+  
+  # Update the manual color scale with more colors
+  scale_color_manual(
+    values = c(
+      "#4A2F0D",    # 
+      #"#7286AA",       #  labels <1 
+      "gray80",    #  points < 1
+      "#4A2F0D",    # labels > LiveNuclei
+      "#d9741a",       #points >1 FixedNuclei
+      "#a3a3a3", # points for genes <1
+      "#8a5c1a"    # points >1 LiveNuclei
+    ),
+    guide = "none"
+  ) +
+  theme_mk +
+  remove_grid +
+  theme(
+    legend.position = "none",  # Show legend for color mapping
+  )
+
+plots[["scatter_plotLNvsFN"]]
+```
+
+# Fig 03 C
+```{r Fig03_1stline,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+layout_1stline <- "
+AB"
+
+plots[["1st_line"]] <- plots[["scatter_plotLCvsFN"]] + plots[["scatter_plotLNvsFN"]]+
+     plot_layout(design = layout_1stline) +
+   plot_annotation(
+    tag_levels = list(c('C', ' '),  # Use 'a' for automatic labels ('a', 'b', 'c', 'd')
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  # Customize tag size and appearance
+                      )))
+
+plots[["1st_line"]]
+
+ggsave(
+  filename = "results/2V_Fig03_1stline_ScatterPlotLCvsFNt.svg",              # Name of the file
+  plot = plots[["1st_line"]],          # The plot object to save
+  device = "svg",                          # Specify the output format (png, pdf, svg)
+  width = 12,                              # Width of the image
+  height = 6,                              # Height of the image
+  units = "cm"                            # Units for width and height 
+)
+```
+
+
+#Venn diagram with ARM activation - extraction only values
+```{r Table with names from DEG,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Create an empty list to store the filtered results
+filtered_de_results <- list()
+
+# Create an empty list to store filtered genes for each condition
+filtered_genes <- list()
+
+# Iterate over the differential expression results stored in all_de_results
+for (name in names(de_results_all)) {
+  # Get the DE results for the current iteration
+  de_results <- de_results_all[[name]]
+  
+  # Filter the results based on the condition: avg_log2FC > 1
+  filtered_results <- subset(de_results, p_val_adj < 0.05 & avg_log2FC > 1)
+  
+  # Save the filtered results into the new list
+  filtered_de_results[[name]] <- filtered_results
+  
+  # Store only the gene names that meet the condition avg_log2FC > 1
+  filtered_genes[[name]] <- rownames(filtered_results)
+  
+  # Print a message for tracking progress
+  print(paste("Filtered DE results for:", name))
+}
+
+# Create the combined table with gene presence/absence
+gene_overlap_table <- data.frame(
+  Gene = unique(unlist(filtered_genes)),
+  LiveCells = unique(unlist(filtered_genes)) %in% filtered_genes$LiveCells,
+  LiveNuclei = unique(unlist(filtered_genes)) %in% filtered_genes$LiveNuclei,
+  FixedNuclei = unique(unlist(filtered_genes)) %in% filtered_genes$FixedNuclei
+)
+
+# Add overlap and status information
+gene_overlap_table <- gene_overlap_table %>%
+  rowwise() %>%
+  mutate(
+    OverlapCount = sum(c_across(LiveCells:FixedNuclei)),
+    Status = case_when(
+      OverlapCount == 3 ~ "Overlap All",
+      OverlapCount == 2 & LiveCells & LiveNuclei ~ "LiveCells and LiveNuclei",
+      OverlapCount == 2 & LiveCells & FixedNuclei ~ "LiveCells and FixedNuclei",
+      OverlapCount == 2 & LiveNuclei & FixedNuclei ~ "LiveNuclei and FixedNuclei",
+      OverlapCount == 1 & LiveCells ~ "Unique LiveCells",
+      OverlapCount == 1 & LiveNuclei ~ "Unique LiveNuclei",
+      OverlapCount == 1 & FixedNuclei ~ "Unique FixedNuclei",
+      TRUE ~ "Other"
+    )
+  )
+
+# Split genes by category
+genes_by_category <- gene_overlap_table %>%
+  select(Gene, Status) %>%
+  group_by(Status) %>%
+  mutate(GeneIndex = row_number()) %>% # Create an index for each gene in a category
+  pivot_wider(names_from = Status, values_from = Gene, values_fill = NA)
+
+
+# Save the horizontal table to an Excel file
+wb <- createWorkbook()
+addWorksheet(wb, "Gene Overlap Analysis")
+writeData(wb, "Gene Overlap Analysis", genes_by_category)
+saveWorkbook(wb, "ws/2V_04_DEG_gene_overlap.xlsx", overwrite = TRUE)
+```
+
+Gene numbers for DEG Venn diagram
+```{r Venn,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+# Create an empty list to store the filtered results
+filtered_de_results <- list()
+
+# Create an empty list to store filtered genes for each condition
+filtered_genes <- list()
+
+# Iterate over the differential expression results stored in all_de_results
+for (name in names(de_results_all)) {
+  # Get the DE results for the current iteration
+  de_results <- de_results_all[[name]]
+  
+  # Filter the results based on the condition: avg_log2FC > 1
+  filtered_results <- subset(de_results, p_val_adj < 0.05 & avg_log2FC > 1)
+  
+  # Save the filtered results into the new list
+  filtered_de_results[[name]] <- filtered_results
+  
+  # Store only the gene names that meet the condition avg_log2FC > 1
+  filtered_genes[[name]] <- rownames(filtered_results)
+  
+  # Print a message for tracking progress
+  print(paste("Filtered DE results for:", name))
+}
+
+
+# Create a combined table with presence/absence of genes in each condition
+gene_overlap_table <- data.frame(
+  Gene = unique(unlist(filtered_genes)),
+  LiveCells = unique(unlist(filtered_genes)) %in% filtered_genes$LiveCells,
+  LiveNuclei = unique(unlist(filtered_genes)) %in% filtered_genes$LiveNuclei,
+  FixedNuclei = unique(unlist(filtered_genes)) %in% filtered_genes$FixedNuclei
+)
+
+# Add overlap and status information
+gene_overlap_table <- gene_overlap_table %>%
+  rowwise() %>%
+  mutate(
+    OverlapCount = sum(c_across(LiveCells:FixedNuclei)),
+    Status = case_when(
+      OverlapCount == 3 ~ "Overlap All",
+      OverlapCount == 2 & LiveCells & LiveNuclei ~ "LiveCells and LiveNuclei",
+      OverlapCount == 2 & LiveCells & FixedNuclei ~ "LiveCells and FixedNuclei",
+      OverlapCount == 2 & LiveNuclei & FixedNuclei ~ "LiveNuclei and FixedNuclei",
+      OverlapCount == 1 & LiveCells ~ "Unique LiveCells",
+      OverlapCount == 1 & LiveNuclei ~ "Unique LiveNuclei",
+      OverlapCount == 1 & FixedNuclei ~ "Unique FixedNuclei",
+      TRUE ~ "Other"
+    )
+  )
+
+# Group and count genes by status
+summary_table <- gene_overlap_table %>%
+  group_by(Status) %>%
+  summarize(UniqueGenes = n(), .groups = "drop")
+
+# Display the summary table
+print(summary_table)
+
+```

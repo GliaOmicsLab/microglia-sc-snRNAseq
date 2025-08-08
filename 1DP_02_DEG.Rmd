@@ -1,0 +1,243 @@
+---
+title: "1DP_02_DEG"
+author: "Domi"
+date: "2025-01-16"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+This markdown file contains a differential gene expression (DEG) analysis aimed at identifying genes with significantly altered expression between experimental conditions.
+
+We focused on two types of comparisons:
+- **a) Within the ARM population across conditions** — results are visualized using a **scatter plot**
+- **b) Between HM and ARM populations** — results are visualized using a **volcano plot**
+ 
+Files which are needed for visualization are saved as
+ 1. **Pseudobulk expression analysis for ARM across isolation protocols (LiveCells, LiveNuclei, FixedNuclei)**  
+		- **File**: `ws/1DP_03_top_genes_ARM_file.rds`  
+		- **File**: `ws/1DP_03_top_genes_ARM.xlsx" ` 
+
+	2. **Pseudobulk expression analysis for ARM across isolation protocols (LiveCells, FixedNuclei)**  
+		- **File**: `ws/1DP_03_gene_table_ScatterPlot_LCvsFN.rds`  
+		- **File**: `results/1DP_03_gene_table_ScatterPlot_LCvsFN.xlsx`
+
+	3. **Pseudobulk expression analysis for ARM across isolation protocols (LiveNuclei, FixedNuclei)**  
+		- **File**: `ws/1DP_03_gene_table_ScatterPlot_LNvsFN.rds`  
+		- **File**: `results/1DP_03_gene_table_ScatterPlot_LNvsFN.xlsx`
+
+	4. **DEG analysis is of HOM microglia and ARM population individually for every isolation protocol (LiveCells, LiveNuclei, FixedNuclei)**
+		- **File**: `ws/1DP_02_DEG_ARMvsHM_allconditions.rds`
+		- **File**: `results/1DP_02_DEG_ARMvsHM_allconditions.xlsx` 
+---
+
+```{r Load packages, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("sctransform"))
+suppressMessages(library("patchwork"))
+suppressMessages(library("openxlsx"))
+suppressMessages(library("EnhancedVolcano"))
+suppressMessages(library("org.Mm.eg.db"))
+suppressMessages(library("clusterProfiler"))
+suppressMessages(library("gprofiler2"))
+suppressMessages(library("openxlsx"))
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)
+```
+
+```{r Load seurat object, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_mg <- readRDS("ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells.rds")
+```
+
+```{r Object only with ARM population, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_ARM <- subset(seurat_mg, subset =  Cell_types_mg_abbr == "ARM")
+```
+
+```{r topT file from ARM for Scatter Plot, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+#Prepare file which can be used for visualisation of DEGs in Scatter Plot 
+DefaultAssay(seurat_ARM) <- "RNA" 
+Idents(seurat_ARM) <- "Cell_types_mg_abbr"
+
+#Normalization of data
+seurat_ARM <- JoinLayers(seurat_ARM, assay = "RNA")
+all.genes.RNA <- rownames(seurat_ARM)
+seurat_ARM <- NormalizeData(seurat_ARM, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_ARM <- ScaleData(seurat_ARM, features = all.genes.RNA)
+
+
+pseudo_seurat <- AggregateExpression(seurat_ARM, assays = "RNA", return.seurat = T, group.by = c("Cond_preparation"))
+
+#Substract avereged log normalized values from seurat object
+topT <- as.data.frame(pseudo_seurat@assays$RNA$data)
+topT$gene_symbol <- ENSEMBL_to_Symbol(rownames(topT))
+
+saveRDS(topT, "ws/1DP_03_top_genes_ARM_file.rds")
+#Supplements for publication
+write.xlsx(topT, file = "results/1DP_03_top_genes_ARM.xlsx", overwrite = TRUE)
+```
+
+DEG - LiveCells and FixedNuclei
+```{r gene_table DEG - LiveCells and FixedNuclei -> Scatter Plot, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+topT <- readRDS("ws/1DP_03_top_genes_ARM_file.rds")
+
+#Create list of different genes - numbers represents borders for significance which is visible in Scatter Plot
+gene_list <- list()
+gene_list[["up_2_FN"]] <- rownames(topT)[topT$FixedNuclei - topT$LiveCells > 2]
+gene_list[["up_1_FN"]] <- rownames(topT)[topT$FixedNuclei - topT$LiveCells >= 1  & topT$FixedNuclei - topT$LiveCells <= 2]
+gene_list[["up_0_FN"]] <- rownames(topT)[topT$FixedNuclei - topT$LiveCells > 0  & topT$FixedNuclei - topT$LiveCells < 1]
+
+gene_list[["up_2_LC"]] <- rownames(topT)[topT$LiveCells - topT$FixedNuclei > 2]
+gene_list[["up_1_LC"]] <- rownames(topT)[topT$LiveCells - topT$FixedNuclei >= 1  & topT$LiveCells - topT$FixedNuclei <= 2]
+gene_list[["up_0_LC"]] <- rownames(topT)[topT$LiveCells - topT$FixedNuclei > 0  & topT$LiveCells - topT$FixedNuclei < 1]
+
+# Find the maximum number of genes across all lists for padding
+max_genes <- max(sapply(gene_list, length))
+
+gene_table <- as.data.frame(
+  lapply(gene_list, function(genes) {
+    # Pad each list with NAs to ensure equal length
+    c(ENSEMBL_to_Symbol(genes), rep("-", max_genes - length(ENSEMBL_to_Symbol(genes))))
+  })
+)
+
+# Rename columns to reflect conditions
+colnames(gene_table) <- c("Upregulated >2x in FN", "Upregulated 1-2x in FN","Upregulated 0-1x in FN",
+                          "Upregulated >2x in LC", "Upregulated 1-2x in LC", "Upregulated 0-1x in LC")
+
+# Display the resulting table
+View(gene_table)
+
+#Save file
+saveRDS(gene_table, "ws/1DP_03_gene_table_ScatterPlot_LCvsFN.rds")
+#Save the file - supplements for publication
+write.xlsx(gene_table, file = "results/1DP_03_gene_table_ScatterPlot_LCvsFN.xlsx", overwrite = TRUE)
+```
+
+DEG - LiveNuclei and FixedNuclei
+```{r gene_table DE - LiveNuclei and FixedNuclei -> Scatter Plot, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+topT <- readRDS("ws/1DP_03_top_genes_ARM_file.rds")
+#Create list of different genes, in this case difference bigger than 0 mean log2FC bigger than 1
+gene_list <- list()
+gene_list[["up_2_FN"]] <- rownames(topT[topT$FixedNuclei - topT$LiveNuclei > 2,])
+gene_list[["up_1_FN"]] <- rownames(topT[topT$FixedNuclei - topT$LiveNuclei >= 1  & topT$FixedNuclei - topT$LiveNuclei <= 2, ])
+gene_list[["up_0_FN"]] <- rownames(topT[topT$FixedNuclei - topT$LiveNuclei > 0  & topT$FixedNuclei - topT$LiveNuclei < 1, ])
+
+gene_list[["up_2_LN"]] <- rownames(topT[topT$LiveNuclei - topT$FixedNuclei > 2,])
+gene_list[["up_1_LN"]] <- rownames(topT[topT$LiveNuclei - topT$FixedNuclei > 1  & topT$LiveNuclei - topT$FixedNuclei < 2, ])
+gene_list[["up_0_LN"]] <- rownames(topT[topT$LiveNuclei - topT$FixedNuclei > 0  & topT$LiveNuclei - topT$FixedNuclei < 1, ])
+
+# Find the maximum number of genes across all lists for padding
+max_genes <- max(sapply(gene_list, length))
+
+gene_table <- as.data.frame(
+  lapply(gene_list, function(genes) {
+    # Pad each list with NAs to ensure equal length
+    c(ENSEMBL_to_Symbol(genes), rep("-", max_genes - length(ENSEMBL_to_Symbol(genes))))
+  })
+)
+
+# Rename columns to reflect conditions
+colnames(gene_table) <- c("Upregulated >2x in FN", "Upregulated 1-2x in FN", "Upregulated 0-1x in FN",
+                          "Upregulated >2x in LN", "Upregulated 1-2x in LN", "Upregulated 0-1x in LN")
+
+# Display the resulting table
+View(gene_table)
+
+#Save file
+saveRDS(gene_table, "ws/1DP_03_gene_table_ScatterPlot_LNvsFN.rds")
+#Save the file - supplements for publication
+write.xlsx(gene_table, file = "results/1DP_03_gene_table_ScatterPlot_LNvsFN.xlsx", overwrite = TRUE)
+```
+
+DEG - LiveCells, LiveNuclei and FixedNuclei
+```{r gene_table DEG - LiveCells, LiveNuclei and FixedNuclei -> Volcano Plot, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+seurat_mg <- readRDS("ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells.rds")
+seurat_mg@meta.data %<>% mutate("Cell_types_mg_abbr_HM_group" = factor(case_when(
+  cca_clusters_sbst_rm == 0 ~ "HM",
+  cca_clusters_sbst_rm == 1 ~ "HM",
+  cca_clusters_sbst_rm == 2 ~ "INTER",
+  cca_clusters_sbst_rm == 3 ~ "ARM",
+  cca_clusters_sbst_rm == 4 ~ "IRM",
+  cca_clusters_sbst_rm == 5 ~ "DIV"
+  )))
+
+#Subset for isolation protocols with normalization - RNA assay
+#LiveCells
+seurat_mg_LC <- subset(seurat_mg, Project == "Cd11b_small_experiment")
+DefaultAssay(seurat_mg_LC) <- "RNA" 
+#seurat_mg_LC <- JoinLayers(seurat_mg_LC, assay = "RNA")
+all.genes.RNA <- rownames(seurat_mg_LC)
+seurat_mg_LC <- NormalizeData(seurat_mg_LC, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_mg_LC <- ScaleData(seurat_mg_LC, features = all.genes.RNA)
+
+#LiveNuclei
+seurat_mg_LN <- subset(seurat_mg, Project == "mouse_live_nuclei")
+DefaultAssay(seurat_mg_LN) <- "RNA" 
+#seurat_mg_LC <- JoinLayers(seurat_mg_LN, assay = "RNA")
+all.genes.RNA <- rownames(seurat_mg_LN)
+seurat_mg_LN <- NormalizeData(seurat_mg_LN, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_mg_LN <- ScaleData(seurat_mg_LN, features = all.genes.RNA)
+
+#FixedNuclei
+seurat_mg_FN <- subset(seurat_mg, Project == "mouse_fixed_nuclei")
+DefaultAssay(seurat_mg_FN) <- "RNA" 
+#seurat_mg_FN <- JoinLayers(seurat_mg_FN, assay = "RNA")
+all.genes.RNA <- rownames(seurat_mg_FN)
+seurat_mg_FN <- NormalizeData(seurat_mg_FN, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_mg_FN <- ScaleData(seurat_mg_FN, features = all.genes.RNA)
+
+
+
+# Define a list of already loaded Seurat objects with corresponding names
+seurat_objects <- list(
+  LiveCells = seurat_mg_LC,
+  LiveNuclei = seurat_mg_LN,
+  FixedNuclei = seurat_mg_FN
+)
+
+# Create an empty list to store all differential expression results
+all_de_results <- list()
+
+# Iterate over the Seurat objects and perform differential expression analysis
+for (name in names(seurat_objects)) {
+  # Get the Seurat object for the current iteration
+  seurat_obj <- seurat_objects[[name]]
+  
+  # Set the cluster identity
+  Idents(seurat_obj) <- "Cell_types_mg_abbr_HM_group"
+  
+  # Perform differential expression analysis between HM2 and ARM clusters
+  de_results <- FindMarkers(seurat_obj, ident.1 = "ARM", ident.2 = "HM")
+  
+  # Add gene symbols (assuming rownames contain ENSEMBL IDs)
+  de_results$gene_symbol <- ENSEMBL_to_Symbol(rownames(de_results))  
+  
+  # Save the results in the combined list
+  all_de_results[[name]] <- de_results
+  
+  # Print a message for tracking progress
+  print(paste("Differential expression analysis completed for:", name))
+}
+
+# Save all results into a single RDS file
+saveRDS(all_de_results, file = "ws/1DP_02_DEG_ARMvsHM_allconditions.rds")
+print("All differential expression results saved to ws/1DP_02_DEG_ARMvsHM_allconditions.rds")
+
+# Create a single Excel file with each condition in a separate sheet
+wb <- createWorkbook()
+
+for (name in names(all_de_results)) {
+  addWorksheet(wb, sheetName = name)
+  writeData(wb, sheet = name, x = all_de_results[[name]])
+}
+
+# Save the workbook
+saveWorkbook(wb, file = "results/1DP_02_DEG_ARMvsHM_allconditions.xlsx", overwrite = TRUE)
+print(paste("All differential expression results saved to Excel file"))
+```

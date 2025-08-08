@@ -1,0 +1,114 @@
+---
+title: "1DP_04_GO"
+author: "Domi"
+date: "2024-11-27"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+##Gene Ontology (GO) Enrichment Analysis
+
+This analysis identifies biological processes that are significantly enriched among differentially expressed genes (DEGs). By mapping DEGs to GO terms, we gain insights into the functional pathways involved in the conditions under study.
+In this case, GO enrichment was performed on genes from the **Scatter Plot**, specifically those with expression values greater than 1 in both **LiveCells** and **FixedNuclei** populations.
+
+**Output files for visualization:**
+- `ws/1DP_03_GOanalysis_LCvsFNscatterplot.rds`  
+- `results/1DP_03_GOanalysis_LCvsFNscatterplot.xlsx`
+
+
+```{r Load packages, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
+suppressMessages(library("Matrix"))
+suppressMessages(library("pheatmap"))
+suppressMessages(library("RColorBrewer"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("Seurat"))
+suppressMessages(library("sctransform"))
+suppressMessages(library("DT"))
+suppressMessages(library("scales"))
+suppressMessages(library("ggrepel"))
+suppressMessages(library("dplyr"))
+suppressMessages(library("ComplexHeatmap"))
+suppressMessages(library("here"))
+suppressMessages(library("gridExtra"))
+suppressMessages(library("magrittr"))
+suppressMessages(library("patchwork"))
+suppressMessages(library("purrr"))
+suppressMessages(library("org.Mm.eg.db"))
+suppressMessages(library("clusterProfiler"))
+suppressMessages(library("enrichplot"))
+suppressMessages(library("openxlsx"))
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)
+```
+
+#GO for Scatter Plot gene in LiveCells vs FixedNuclei
+```{r GO analysis ScatterPlot LiveCells vs FixedNuclei, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE }
+topT <- readRDS("ws/1DP_03_top_genes_ARM_file.rds")
+
+gene_list <- list()
+gene_list[["up_1_FN"]] <- topT$gene_symbol[topT$FixedNuclei - topT$LiveCells >= 1]
+gene_list[["up_1_LC"]] <- topT$gene_symbol[topT$LiveCells - topT$FixedNuclei >= 1]
+
+
+# List of datasets and a container for the results
+datasets <- list(LiveCells = gene_list[["up_1_LC"]], FixedNuclei = gene_list[["up_1_FN"]])
+converted_results <- list() # To hold datasets with ENTREZ IDs
+
+# Define thresholds
+pval_threshold <- 0.05
+logfc_threshold <- 0.1
+
+# Process each dataset
+for (name in names(datasets)) {
+  dataset <- datasets[[name]]
+  
+  # Convert cleaned ENSEMBL IDs to ENTREZ IDs
+  converted_results[[name]]  <- bitr(dataset, 
+                     fromType = "SYMBOL",
+                     toType = "ENTREZID",
+                     OrgDb = org.Mm.eg.db) 
+ converted_results[[name]] <- converted_results[[name]]$ENTREZID
+  
+}
+
+combined_results <- compareCluster(
+  geneCluster = converted_results,
+  fun = "enrichGO",
+  OrgDb = org.Mm.eg.db,
+  keyType = "ENTREZID",
+  ont = "BP",
+  pvalueCutoff = 0.05
+)
+
+pairwise_res <- pairwise_termsim(combined_results)
+
+saveRDS(pairwise_res, "ws/1DP_03_GOanalysis_LCvsFNscatterplot.rds")
+
+
+#Saving of data in Excel file
+# Extract the data.frame from the S4 object
+pairwise_res_df <- as.data.frame(pairwise_res@compareClusterResult)
+
+# Filter the data for LiveCells and FixedNuclei
+live_cells_data <- subset(pairwise_res_df, Cluster == "LiveCells")
+fixed_nuclei_data <- subset(pairwise_res_df, Cluster == "FixedNuclei")
+
+# Create a new workbook
+wb <- createWorkbook()
+
+# Add LiveCells data as a sheet
+addWorksheet(wb, "LiveCells")
+writeData(wb, "LiveCells", live_cells_data)
+
+# Add FixedNuclei data as a sheet
+addWorksheet(wb, "FixedNuclei")
+writeData(wb, "FixedNuclei", fixed_nuclei_data)
+
+# Save the workbook
+saveWorkbook(wb,"results/1DP_03_GOanalysis_LCvsFNscatterplot.xlsx" , overwrite = TRUE)
+```
