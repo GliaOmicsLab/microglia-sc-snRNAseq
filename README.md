@@ -4,7 +4,10 @@ These scripts guide you through the analysis of single-cell(**scRNA-seq**) and s
 **LiveCells**, **LiveNuclei**, and **FixedNuclei**. 
 
 Datasets are publicly available on **Zenodo**.
-The main experiment can be explored online via **Nygen portal** ([all cells] (https://scarfweb.nygen.io/eu-central-1/public/q2acwcw8)  and [the subset of microglia] (https://scarfweb.nygen.io/eu-central-1/public/wxvqmskh)).
+The main experiment can be explored online via the **Nygen portal**:  
+- [All cells](https://scarfweb.nygen.io/eu-central-1/public/q2acwcw8)  
+- [Microglia subset](https://scarfweb.nygen.io/eu-central-1/public/wxvqmskh)
+
 
 ## Experimental Overview
 Enriching microglia from fresh-frozen brain tissue is challenging due to marker degradation and cellular fragility. To overcome these limitations, we developed a novel protocol (**FixedNuclei**)  that selectively enriches PU.1⁺ nuclei (protocol.io):
