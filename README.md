@@ -1,6 +1,6 @@
 **Welcome!**
 ---
-These scripts guide you through the analysis of single-cell(**scRNA-seq**) and single-nucleus RNA sequencing (**snRNA-seq**) data generated from microglial enrichment experiments using three different isolation protocols: 
+These scripts guide you through the analysis of single-cell (**scRNA-seq**) and single-nucleus RNA sequencing (**snRNA-seq**) data generated from microglial enrichment experiments using three different isolation protocols: 
 **LiveCells**, **LiveNuclei**, and **FixedNuclei**. These data support the publication titled: *Adapted Smart-seq3xpress facilitates selective microglial transcriptomic profiling from frozen brain tissue.*
 
 Datasets are publicly available on **Zenodo**.
@@ -29,7 +29,7 @@ Results obtained with the FixedNuclei protocol were compared with two commonly u
 The following folder structure is recommended:
 ```
 project_name/
-├── data/                 # Raw and processed data files
+├── data/                # Raw and processed data files
 ├── ws/                  # Workspace files (RDS, intermediate objects)
 └── results/             # Analysis outputs (plots, tables)
 ```
