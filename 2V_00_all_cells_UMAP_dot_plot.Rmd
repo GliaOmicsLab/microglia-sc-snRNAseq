@@ -1,6 +1,6 @@
 ---
-title: "SS3x"
-author: "Domi"
+title: "2V_00_all_cells_UMAP_dot_plot_bar_plot"
+author: "Dominika Dostalova"
 date: "15 01 2025"
 output: html_document
 editor_options: 
@@ -324,7 +324,7 @@ plots[["stacked_bar_all"]] <- ggplot(perc_clust_per_condition, aes(x = Cond_appr
     legend.position = "right",
     legend.margin = margin(t = -7.5),
     plot.margin = margin(0,0,0,0),
-    axis.text.x = element_text(angle = 340, vjust = +0.1, hjust = +0.2),
+    axis.text.x = element_text(angle = 310, vjust = +0.1, hjust = +0.2),
     axis.title.x = element_blank(), 
     legend.text = element_text(margin = margin(t = 0, r = 1, b = 1, l = 1)),
     legend.title = element_text(margin = margin(t = 0, r = 1, b = 6, l = 1))
@@ -340,7 +340,7 @@ ggsave(
   plot = plots[["stacked_bar_all"]],          
   device = "svg",                          
   width = 7,                             
-  height = 4.5,                              
+  height = 4.8,                              
   units = "cm"                          
 )
 ```

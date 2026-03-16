@@ -1,6 +1,6 @@
 ---
-title: "1DP_05_CellChat"
-author: "Domi"
+title: "1DP_04_CellChat"
+author: "Dominika Dostalova"
 date: "2024-11-27"
 output: html_document
 editor_options: 

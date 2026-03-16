@@ -1,6 +1,6 @@
 ---
-title: "1DP_04_GO"
-author: "Domi"
+title: "1DP_03_GO"
+author: "Dominika Dostalova"
 date: "2024-11-27"
 output: html_document
 editor_options: 

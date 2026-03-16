@@ -1,6 +1,6 @@
 ---
 title: "1DP_02_DEG"
-author: "Domi"
+author: "Dominika Dostalova"
 date: "2025-01-16"
 output: html_document
 editor_options: 
@@ -15,7 +15,7 @@ We focused on two types of comparisons:
 Files which are needed for visualization are saved as
  1. **Pseudobulk expression analysis for ARM across isolation protocols (LiveCells, LiveNuclei, FixedNuclei)**  
 		- **File**: `ws/1DP_03_top_genes_ARM_file.rds`  
-		- **File**: `ws/1DP_03_top_genes_ARM.xlsx" ` 
+		- **File**: `results`/1DP_03_top_genes_ARM.xlsx" ` 
 
 	2. **Pseudobulk expression analysis for ARM across isolation protocols (LiveCells, FixedNuclei)**  
 		- **File**: `ws/1DP_03_gene_table_ScatterPlot_LCvsFN.rds`  
@@ -212,7 +212,7 @@ for (name in names(seurat_objects)) {
   # Set the cluster identity
   Idents(seurat_obj) <- "Cell_types_mg_abbr_HM_group"
   
-  # Perform differential expression analysis between HM2 and ARM clusters
+  # Perform differential expression analysis between ARM and HM clusters
   de_results <- FindMarkers(seurat_obj, ident.1 = "ARM", ident.2 = "HM")
   
   # Add gene symbols (assuming rownames contain ENSEMBL IDs)

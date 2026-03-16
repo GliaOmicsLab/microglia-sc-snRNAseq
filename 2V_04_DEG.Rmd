@@ -1,6 +1,6 @@
 ---
 title: "2V_04_DEG"
-author: "Domi"
+author: "Dominika Dostalova"
 date: "2024-11-27"
 output: html_document
 editor_options: 
@@ -86,8 +86,8 @@ for (i in seq_along(protocol_names)) {
     geom_point(data = gene_inter,
                aes(x = avg_log2FC, y = -log10(p_val_adj)),
                shape = 21,
-               fill = "#4E6374",
-               color = "#4E6374",
+               fill = "black",
+               color = "black",
                size = 1,
                stroke = 0.2) +
    geom_label_repel(data = gene_inter %>% filter(significant),
@@ -95,20 +95,22 @@ for (i in seq_along(protocol_names)) {
                       box.padding   = 0.22,
                      label.padding = 0.10,
                      point.padding = 0.1,
-                     color = "#4E6374",
+                     color = "black",
                      size = 1.8,
                      max.iter = 20000,
                      max.overlaps = 20,
-                     force = 2,
+                     min.segment.length = 0,
+                     force = 30,
                      nudge_y = 1,
                      label.size = 0,
                      segment.size = 0.1) +
     geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "#B6C7DB", linewidth = 0.1) +
     geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "#B6C7DB", linewidth = 0.1) +
     labs(
-      title = paste(protocol, "\n(HM vs ARM)"),
-      x = "Log2 Fold Change",
-      y = if (i == 1) "-Log10 Adjusted P-value" else NULL
+      title = paste(protocol, "\n(ARM vs HM)"),
+      subtitle = ("   down in ARM                          up in ARM"),
+      x = "Log2 fold change",
+      y = if (i == 1) "-Log10 adjusted p-value" else NULL
     ) +
     scale_color_manual(
       values = c(
@@ -119,7 +121,7 @@ for (i in seq_along(protocol_names)) {
       guide = "none"
     ) +
     scale_x_continuous(limits = c(-6.5, 9.1)) +
-    scale_y_continuous(limits = c(-5, 70)) +
+    scale_y_continuous(limits = c(-5, NA )) +#70
     theme_mk_title +
     remove_grid
   
@@ -256,23 +258,25 @@ plots[["scatter_plotLCvsFN"]] <- ggplot(topT, aes(x = LiveCells, y = FixedNuclei
     point.padding = 0.1,
     size = 1.8,
     max.iter = 20000,
+    min.segment.length = 0,
     max.overlaps = 20,
     show.legend = FALSE,
-    label.size = 0
+    label.size = 0, 
+    segment.size = 0.1
   )+
   
   # Update the manual color scale with more colors
   scale_color_manual(
     values = c(
-      "#2F3C23",    # labels >2 LiveCells
+      "black",    # labels >2 LiveCells
       "#5F7048",       # points >1 LiveCells
      # "#7286AA",    # labels for genes <1
       "gray80",    # points < 1
-      "#2F3C23",       # labels >1 LiveCells
+      "black",       # labels >1 LiveCells
       "#d9741a", # points >1 FixedNuclei
-      "#a3a3a3",    # points for genes <1
-      "#2F3C23",       # points for genes >1 LiveCells
-      "#2F3C23"   # points for genes >2 LiveCells
+      "black",    # points for genes <1
+      "black",       # points for genes >1 LiveCells
+      "black"   # points for genes >2 LiveCells
     )
   ) +
   theme_mk +
@@ -378,21 +382,23 @@ plots[["scatter_plotLNvsFN"]] <- ggplot(topT_LNvsFN, aes(x = LiveNuclei, y = Fix
     point.padding = 0.1,
     size = 1.8,
     max.iter = 20000,
+    min.segment.length = 0,
     max.overlaps = 20,
     show.legend = FALSE,
-    label.size = 0
+    label.size = 0,
+    segment.size = 0.1
   ) +
   
   # Update the manual color scale with more colors
   scale_color_manual(
     values = c(
-      "#4A2F0D",    # 
+      "#8a5c1a",    # points >1 LiveNuclei
       #"#7286AA",       #  labels <1 
       "gray80",    #  points < 1
-      "#4A2F0D",    # labels > LiveNuclei
+      "black",    # labels > LiveNuclei
       "#d9741a",       #points >1 FixedNuclei
-      "#a3a3a3", # points for genes <1
-      "#8a5c1a"    # points >1 LiveNuclei
+      "black", # points for genes <1
+      "black"    # points >1 LiveNuclei SF
     ),
     guide = "none"
   ) +
@@ -411,12 +417,7 @@ layout_1stline <- "
 AB"
 
 plots[["1st_line"]] <- plots[["scatter_plotLCvsFN"]] + plots[["scatter_plotLNvsFN"]]+
-     plot_layout(design = layout_1stline) +
-   plot_annotation(
-    tag_levels = list(c('C', ' '),  # Use 'a' for automatic labels ('a', 'b', 'c', 'd')
-                      theme = theme(
-                        plot.tag = element_text(size = 7, face = "plain")  # Customize tag size and appearance
-                      )))
+     plot_layout(design = layout_1stline)
 
 plots[["1st_line"]]
 

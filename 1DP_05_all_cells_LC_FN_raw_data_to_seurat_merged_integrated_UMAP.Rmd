@@ -1,6 +1,6 @@
 ---
-title: "SS3x"
-author: "Domi"
+title: "1DP_05_all_cells_LC_FN_raw_data_into_seurat"
+author: "Dominika Dostalova + Pavel Abaffy"
 date: "08 01 2025"
 output: html_document
 editor_options: 

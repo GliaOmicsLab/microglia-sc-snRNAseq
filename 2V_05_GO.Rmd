@@ -1,6 +1,6 @@
 ---
 title: "2V_05_GO"
-author: "Domi"
+author: "Dominika Dostalova"
 date: "2024-11-27"
 output: html_document
 editor_options: 
