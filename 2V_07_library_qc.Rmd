@@ -1,0 +1,272 @@
+---
+title: "2V_07_library_qc"
+author: "Dominika Dostalova"
+date: "2026-02-17"
+output: html_document
+---
+Introduction:
+This script is dedicated to visualizing processed data from **1DP_06_library_qc.Rmd**. The processed data are represented using **Line and Density plots** to illustrate library qualities.
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyr) # For data reshaping
+plots <- list()
+col_list <- list()
+orders <- list()
+source("0F_general_functions.R", local = F, echo = F, print.eval = F)
+source("0F_colours_orders.R", local = F, echo = F, print.eval = F)
+#Read table with gene symbols end IDs
+gene_symbol <- read.table("data/Smartseq3xpress.gene_names.txt", header = TRUE)
+```
+
+```{r Load data}
+# Load the master coverage data
+data <- read.table("ws/1DP_07_Combined_GeneBody_Coverage.txt", 
+                          header = TRUE, 
+                          sep = "\t", 
+                          check.names = FALSE)
+
+# Verify the first few rows and column names
+head(data)
+```
+
+```{r Scaled data}
+# 1. Create a copy of your data frame to hold the normalized results
+normalized_data <- data
+
+# 2. Loop through all columns except the first one (which is 'Percentile')
+# We use colnames(master_data)[-1] to skip the X-axis
+for (sample_name in colnames(data)[-1]) {
+  
+  # Get the raw values for the current sample
+  raw_vals <- data[[sample_name]]
+  
+  # Calculate the maximum value for this sample
+  max_val <- max(raw_vals, na.rm = TRUE)
+  
+  # Perform normalization: divide each point by the maximum
+  # This ensures the peak of every curve is exactly 1.0
+  normalized_data[[sample_name]] <- raw_vals / max_val
+}
+
+# 3. View the first few rows of the normalized table
+head(normalized_data)
+```
+
+```{r}
+# 1. Get all available sample names (excluding 'Percentile')
+all_samples <- colnames(normalized_data)[-1]
+
+# 2. Create the Prefiltered List
+filtered_groups <- list(
+  Spikes_nonTagged = all_samples[grepl("Spikes_nonTagged", all_samples)],
+  Spikes_Tagged    = all_samples[grepl("Spikes_Tagged", all_samples)],
+  nonTagged        = all_samples[grepl("nonTagged", all_samples) & !grepl("Spikes", all_samples)],
+  OnlyTagged       = all_samples[grepl("OnlyTagged", all_samples)]
+)
+
+# 3. Verify the lists (you will see 3 files in each group)
+print(filtered_groups)
+```
+```{r}
+# Extract the colors from your list
+# Based on your script: col_list[["Cond_preparation"]]
+current_colors <- col_list[["Cond_preparation"]]
+
+# Define the order in the legend
+legend_order <- c("LiveCells", "LiveNuclei","FixedNuclei")
+
+# Define the special titles for each category
+special_titles <- c(
+  "Spikes_nonTagged" = "Spike-ins (internal reads)",
+  "Spikes_Tagged"    = "Spike-ins (UMI-tagged reads)",
+  "nonTagged"        = "Transcriptome (internal reads)",
+  "OnlyTagged"       = "Transcriptome (UMI-tagged reads)"
+)
+
+# Loop through your filtered groups
+for (grp_name in names(filtered_groups)) {
+  
+  # Get column names for this group (e.g., FixedNuclei_nonTagged_bam, etc.)
+  cols <- filtered_groups[[grp_name]]
+  
+  if (length(cols) > 0) {
+    # Prepare the data: Filter and Pivot to Long Format
+    plot_df <- normalized_data[, c("Percentile", cols)]
+    plot_df_long <- pivot_longer(plot_df, cols = -Percentile, 
+                                 names_to = "Sample", values_to = "Coverage")
+    
+    # Assign the Condition label based on the column name keywords
+    plot_df_long$Condition <- NA
+    plot_df_long$Condition[grepl("LiveCells", plot_df_long$Sample)] <- "LiveCells"
+    plot_df_long$Condition[grepl("LiveNuclei", plot_df_long$Sample)] <- "LiveNuclei"
+    plot_df_long$Condition[grepl("FixedNuclei", plot_df_long$Sample)] <- "FixedNuclei"
+    
+    #Convert Condition to a factor with specific levels
+    plot_df_long$Condition <- factor(plot_df_long$Condition, levels = legend_order)
+    
+    # Create the ggplot
+    p <- ggplot(plot_df_long, aes(x = Percentile, y = Coverage, color = Condition)) +
+      geom_line(linewidth = 0.6) +
+      scale_color_manual(values = current_colors) + # Uses your col_list values
+      scale_y_continuous(limits = c(0, 1.1), breaks = seq(0, 1, 0.5)) +
+      labs(title = special_titles[grp_name], x = "Gene body percentile (5'->3')", y = "Scaled coverage") +
+      theme_mk_title +
+      remove_grid+
+      theme(legend.position = "none")
+    
+    plots[[grp_name]] <- p
+  }
+}
+
+# 3. Create the Final Patchwork Object
+# (A + B) / (C + D) with a collected legend at the bottom
+final_integrity_plot <- (plots[["OnlyTagged"]] + plots[["nonTagged"]] )/ 
+                         (plots[["Spikes_Tagged"]] +plots[["Spikes_nonTagged"]])+ 
+                        plot_layout(guides = 'collect') & 
+                        theme(legend.position = 'bottom')
+
+# 4. Show the plot
+final_integrity_plot
+```
+
+```{r}
+layout2ndline <- "
+AB
+CD
+"
+plots[["2ndline"]] <- plots[["OnlyTagged"]] + plots[["nonTagged"]] + plots[["Spikes_Tagged"]] +plots[["Spikes_nonTagged"]] + plot_layout(guides = "collect", design = layout2ndline) &  # Collect legends from all plots
+  theme(
+    legend.position = "right",           
+    legend.justification = "center",      
+    legend.margin = margin(t = +5),      
+    legend.key.size = unit(0.5, "cm"),
+    legend.title = element_blank()
+  ) &
+  plot_annotation(
+    tag_levels = list(c('A', " "),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  # Customize tag size and appearance
+                      )))
+
+plots[["2ndline"]]
+
+ggsave(
+  filename = "results/2V_FigS04_3bias_metrics.svg",              # Name of the file
+  plot = plots[["2ndline"]],          # The plot object to save
+  device = "svg",                          # Specify the output format (png, pdf, svg)
+  width = 16.9,                              # Width of the image
+  height = 9,                              # Height of the image
+  units = "cm"                            # Units for width and height 
+)
+```
+
+#RNA integrity
+```{r}
+# Define directory and the four patterns matching your read types
+data_dir <- "ws/"
+patterns <- c("nonTagged", "OnlyTagged", "Spikes_nonTagged", "Spikes_Tagged")
+
+# Initialize a master list to hold the four categories
+isize_master_list <- list()
+
+for (p in patterns) {
+  # 1. Identify files matching the specific pattern
+  current_files <- list.files(path = data_dir, 
+                              pattern = paste0("_isizes_", p, ".txt$"), 
+                              full.names = TRUE)
+  
+  # 2. Name the files based on the isolation protocol (e.g., FixedNuclei)
+  names(current_files) <- gsub(paste0("_isizes_", p, ".txt"), "", basename(current_files))
+  
+  # 3. Load the numeric data into a sub-list
+  isize_master_list[[p]] <- lapply(current_files, function(f) {
+    scan(f, quiet = TRUE)
+  })
+}
+```
+
+```{r}
+# Check how many protocols were loaded for each pattern
+sapply(isize_master_list, length)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+special_titles <- c(
+ "Spikes_nonTagged" = "Spike-ins (internal reads)",
+ "Spikes_Tagged"    = "Spike-ins (UMI-tagged reads)",
+ "nonTagged"        = "Transcriptome (internal reads)",
+ "OnlyTagged"       = "Transcriptome (UMI-tagged reads)"
+)
+
+# Loop for visualisation
+for (cat_name in names(isize_master_list)) {
+  
+  # Converting a sub-list (protocols) for a given category to a single data.frame
+  plot_data <- bind_rows(lapply(names(isize_master_list[[cat_name]]), function(prep_name) {
+    data.frame(
+      insert_size = isize_master_list[[cat_name]][[prep_name]],
+      Prep = prep_name
+    )
+  }))
+  
+  # Ensure Prep is a factor to maintain standard ordering (LiveCells -> LiveNuclei -> FixedNuclei)
+  plot_data$Prep <- factor(plot_data$Prep, levels = orders[["Cond_preparation"]])
+  
+  # Kontrola, zda jsou v kategorii nějaká data
+  if (nrow(plot_data) > 0) {
+    p_obj <- ggplot(plot_data, aes(x = insert_size, fill = Prep, color = Prep)) +
+      geom_density(alpha = 0.1) +
+      scale_fill_manual(values = col_list[["Cond_preparation"]]) +
+      scale_color_manual(values = col_list[["Cond_preparation"]]) +
+      xlim(0, 1000) + 
+      labs(
+        title = paste(special_titles[cat_name]),
+        x = "Insert size (bp)",
+        y = "Density"
+      ) +
+      theme_mk_title +
+      remove_grid +
+      theme(legend.title = element_blank())
+    
+    plots[[cat_name]] <- p_obj
+    
+    
+  }
+}
+```
+
+```{r}
+layout2ndline <- "
+AB
+CD
+"
+plots[["2ndline"]] <- plots[["OnlyTagged"]] + plots[["nonTagged"]] + plots[["Spikes_Tagged"]] +plots[["Spikes_nonTagged"]] + plot_layout(guides = "collect", design = layout2ndline) &  # Collect legends from all plots
+  theme(
+    legend.position = "right",           
+    legend.justification = "center",      
+    legend.margin = margin(t = +5),      
+    legend.key.size = unit(0.5, "cm"),
+    legend.title = element_blank()
+  ) &
+  plot_annotation(
+    tag_levels = list(c('B', " "),  
+                      theme = theme(
+                        plot.tag = element_text(size = 7, face = "plain")  # Customize tag size and appearance
+                      )))
+
+#plots[["2ndline"]]
+
+ggsave(
+  filename = "results/2V_FigS04_RNA_integrity.svg",              # Name of the file
+  plot = plots[["2ndline"]],          # The plot object to save
+  device = "svg",                          # Specify the output format (png, pdf, svg)
+  width = 16.9,                              # Width of the image
+  height = 9,                              # Height of the image
+  units = "cm"                            # Units for width and height 
+)
+```

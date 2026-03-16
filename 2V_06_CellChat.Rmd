@@ -1,6 +1,6 @@
 ---
 title: "2V_06_CellChat"
-author: "Domi"
+author: "Dominika Dostalova"
 date: "2024-11-28"
 output: html_document
 editor_options: 

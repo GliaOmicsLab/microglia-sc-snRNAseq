@@ -1,6 +1,6 @@
 ---
-title: "scRNA-Seq"
-author: "Domi"
+title: "1DP_01_mg_cells_raw_data_into_seurat"
+author: "Dominika Dostalova + Pavel Abaffy"
 date: "09 01 2025"
 output: html_document
 editor_options: 

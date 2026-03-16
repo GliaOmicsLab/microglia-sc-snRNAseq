@@ -1,6 +1,6 @@
 ---
-title: "SS3x"
-author: "Domi"
+title: "2V_02_mg_cells_UMAP_dot_plot_bar_plot"
+author: "Dominika Dostalova"
 date: "2025-01-16"
 output: html_document
 editor_options: 
@@ -132,6 +132,7 @@ table(seurat_mg@meta.data$Cond_preparation)
 table(seurat_mg@meta.data$Cell_types_mg_abbr)
 ```
 
+
 # Fig. 02 A UMAP visualisation in combination of 4 UMAPs
 ```{r UMAP saving, eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
 layout_1stline <- "
@@ -158,6 +159,87 @@ ggsave(
 )
 ```
 
+UMAP visualisation - extension - clusters in individual conditions 
+```{r}
+#Load seurat
+seurat_mg <- readRDS("ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells.rds")
+# 1. Define the Dictionary (Condition Name = Exclusion String)
+filter_dict <- c(
+  "LiveCells"   = "LiveNuclei + FixedNuclei",
+  "LiveNuclei"  = "LiveCells + FixedNuclei",
+  "FixedNuclei" = "LiveCells + LiveNuclei"
+)
+
+# 2. Loop through the dictionary keys
+for (cond in names(filter_dict)) {
+  
+  # Get the exclusion value from our dictionary
+  exclude_val <- filter_dict[cond]
+  
+  # Subset the cells safely using the metadata index
+  cells_to_keep <- seurat_mg@meta.data[[cond]] != exclude_val
+  seurat_filtered <- subset(seurat_mg, cells = colnames(seurat_mg)[cells_to_keep])
+  
+  # Construct keys for storage and colors
+  plot_key <- paste0("UMAP_mg_abbr_", cond)
+  color_key <- paste0("UMAP", cond)
+  
+  # 3. Create the Plot
+  plots[[plot_key]] <- DimPlot(
+    seurat_filtered,
+    reduction = "umap.cca_rm",
+    group.by = "Cell_types_mg_abbr",
+    pt.size = 0.1,
+    cols = col_list[["UMAP_mg"]]
+  ) + 
+    ggtitle(cond) + 
+    theme_umap + 
+    remove_grid + 
+    remove_axes +
+    guides(colour = guide_legend(override.aes = list(size = 1)))
+
+  # Display in the notebook
+  print(plots[[plot_key]])
+}
+```
+
+```{r}
+# Define the layout: three plots in a single row
+layout_row <- "ABC"
+
+# Combine the three specific plots
+plots[["final_row"]] <- plots[["UMAP_mg_abbr_LiveCells"]] + 
+                        plots[["UMAP_mg_abbr_LiveNuclei"]] + 
+                        plots[["UMAP_mg_abbr_FixedNuclei"]] +
+  plot_layout(
+    design = layout_row, 
+    widths = c(1.5, 1.5, 1.5),
+    guides = "collect"  # This is the magic line that merges the legends
+  ) +
+  plot_annotation(
+    tag_levels = list(c('A', '', '')),
+    theme = theme(
+      plot.tag = element_text(size = 7, face = "plain")
+    )
+  ) & 
+  theme(legend.position = "right") # Moves the shared legend to the right side
+
+# Display the final combined visualization
+plots[["final_row"]]
+```
+
+#SFig 04 UMAP_with_mg_cluster
+```{r}
+# 4. Save the result
+ggsave(
+  filename = "results/2V_SFig04_UMAP_with_mg_clusters.svg",
+  plot = plots[["final_row"]],
+  device = "svg",
+  width = 16,
+  height = 3.5,
+  units = "cm"
+)
+```
 
 #Dotplot visualisation of genes
 ```{r List of marker_genes_all,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
@@ -321,7 +403,7 @@ plots[["stacked_bar_mg"]] <- ggplot(perc_clust_per_condition, aes(x = Cond_appr,
     legend.position = "right",
     legend.margin = margin(t = -7.5),
     plot.margin = margin(0,0,0,0),
-    axis.text.x = element_text(angle = 340, vjust = +0.1, hjust = +0.2),
+    axis.text.x = element_text(angle = 310, vjust = +0.1, hjust = +0.2),
     axis.title.x = element_blank(), 
     legend.text = element_text(margin = margin(t = 0, r = 1, b = 1, l = 1)),
     legend.title = element_text(margin = margin(t = 0, r = 1, b = 6, l = 1))
@@ -338,7 +420,7 @@ ggsave(
   plot = plots[["stacked_bar_mg"]],        
   device = "svg",                          
   width = 7,                             
-  height = 4.5,                             
+  height = 4.8,                             
   units = "cm"                            
 )
 ```
@@ -363,7 +445,7 @@ seurat_mg <- AddModuleScore(seurat_mg, features = list(CPM_up), assay = "RNA", n
 ```{r Feature plots from Frigerio,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
 # Define the features and their corresponding titles
 features <- c("ARM_up_1", "ARM_down_1", "IRM_up_1", "CPM_up_1")
-titles <- c("ARM \n(Sala Frigerio et al, 2019)", "HM \n(Sala Frigerio et al, 2019)", "IRM \n(Sala Frigerio et al, 2019)", "CPM \n(Sala Frigerio et al, 2019)")  # Custom titles
+titles <- c("ARM *", "HM *", "IRM *", "CPM *")  # Custom titles
 
 # Define custom breaks for each feature
 custom_breaks <- list(
@@ -405,7 +487,7 @@ for (i in seq_along(features)) {
       legend.key.size = unit(2.5, "mm")
     ) +
     scale_color_gradientn(
-      name = "Average \nExpression",          
+      name = "Average \nexpression",          
       colors = c("#c6daeb", "#3A0956"),
       breaks = breaks,                        # Use manually set breaks
       labels = labels                         # Use manually set labels
@@ -421,12 +503,7 @@ layout_3rdline <- "
 ABCD
 "
 plots[["3rd_line"]] <- plots[["ARM_down_1_feature"]] + plots[["ARM_up_1_feature"]] +  plots[["IRM_up_1_feature"]] + plots[["CPM_up_1_feature"]] +
-   plot_layout(design = layout_3rdline) +
-   plot_annotation(
-    tag_levels = list(c('D', ''),  
-                      theme = theme(
-                        plot.tag = element_text(size = 7, face = "plain")  
-                      )))
+   plot_layout(design = layout_3rdline)
 
 
 plots[["3rd_line"]]
@@ -436,7 +513,7 @@ ggsave(
   plot = plots[["3rd_line"]],          
   device = "svg",                          
   width = 16.9,                             
-  height = 5.5,                              
+  height = 4.7,                              
   units = "cm"                            
 )
 ```
@@ -446,10 +523,10 @@ ggsave(
 # Define the features for which you want to create violin plots
 features <- c("ARM_up_1", "ARM_down_1", "IRM_up_1", "CPM_up_1")
 titles <- c(
-  "ARM \n(Sala Frigerio et al, 2019)", 
-  "HM \n(Sala Frigerio et al, 2019)", 
-  "IRM \n(Sala Frigerio et al, 2019)", 
-  "CPM \n(Sala Frigerio et al, 2019)"
+  "ARM *", 
+  "HM *", 
+  "IRM *", 
+  "CPM *"
 )
 
 # Define your comparisons
@@ -497,7 +574,7 @@ for (i in seq_along(features)) {
     NoLegend() +
     # Overlay box plot with white fill
     geom_boxplot(width = 0.1, outlier.shape = NA, color = "black", fill = "white") +
-    labs(y = if (i == 2) "Average Expression" else NULL) +
+    labs(y = if (i == 2) "Average expression" else NULL) +
     # Add statistical comparison with adjusted spacing
     stat_compare_means(
       comparisons = feature_comparisons,                     # Use the comparisons specific to this feature
@@ -542,3 +619,127 @@ ggsave(
   units = "cm"                            
 )
 ```
+
+# Garcia-Bonilla markers
+```{r}
+#Load seurat
+seurat_mg <- readRDS("ws/1DP_01_seurat_merged_integrated_UMAP_mg_cells.rds")
+DefaultAssay(seurat_mg) <- "RNA" 
+seurat_mg <- JoinLayers(seurat_mg, assay = "RNA")
+all.genes.RNA <- rownames(seurat_mg)
+seurat_mg <- NormalizeData(seurat_mg, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_mg <- ScaleData(seurat_mg, features = all.genes.RNA)
+# 1. Create a master list of all Mg gene sets (converting Symbols to ENSEMBL)
+mg_signatures <- list(
+  Mg1 = Symbol_to_ENSEMBL(c("Rn7sk", "Siglech", "P2ry12", "Maf", "Ivns1abp", "Tgfbr1", "Nrip1", "Zfhx3", "Crybb1", "Sult1a1")),
+  Mg2 = Symbol_to_ENSEMBL(c("Jun", "Klf2", "Btg2", "Klf4", "Klf6", "Cited2", "Dusp1", "Dnajb1", "Ubc", "Zfp36")),
+  Mg3 = Symbol_to_ENSEMBL(c("Apoe", "Cst7", "Clec7a", "Ifi27l2a", "Lyz2", "Lgals3bp", "Igf1", "H2-D1", "Lpl", "Apoc1")),
+  Mg4 = Symbol_to_ENSEMBL(c("Spp1", "Lgals3", "Msr1", "Lgals1", "Ccl12", "Dab2", "Plin2", "Cstb", "Pkm", "Lilr4b")),
+  Mg5 = Symbol_to_ENSEMBL(c("Top2a", "Mki67", "Birc5", "Smc4", "Pclaf", "Tubb5", "Stmn1", "Prc1", "Ube2c", "Hmmr")),
+  Mg6 = Symbol_to_ENSEMBL(c("Il1b", "Cd83", "Nfkbiz", "Ccl4", "Egr1", "Atf3", "Adams1", "Ccl3", "Fos", "Fosb")),
+  Mg7 = Symbol_to_ENSEMBL(c("Gpnmb", "Chst1", "Axl", "Itgax", "Ly9", "Ctla2a", "Ctsa", "Cox6a2", "Gramd1b", "Lipa")),
+  Mg8 = Symbol_to_ENSEMBL(c("Srm", "Lsm5", "Clec4a3", "Sp3os", "Tpt1", "Ndufab1", "Snrpd2", "Nop10", "Ms4a6b", "Cox7b"))
+)
+
+# 2. Set the default assay to RNA (since you previously preferred this)
+DefaultAssay(seurat_mg) <- "RNA"
+
+# 3. Loop through the list to calculate each Module Score
+for (mg_name in names(mg_signatures)) {
+  
+  message("Calculating score for: ", mg_name)
+  
+  # Ensure we only use genes present in the object to avoid errors
+  valid_genes <- intersect(mg_signatures[[mg_name]], rownames(seurat_mg))
+  
+  if (length(valid_genes) > 0) {
+    seurat_mg <- AddModuleScore(
+      object = seurat_mg,
+      features = list(valid_genes),
+      assay = "RNA",
+      name = paste0(mg_name, "_up_") # This creates columns like Mg1_up_1, Mg2_up_1, etc.
+    )
+  } else {
+    message("Warning: No matching genes found for ", mg_name)
+  }
+}
+```
+
+```{r}
+# 1. Define the 8 features and custom titles
+features <- paste0("Mg", 1:8, "_up_1")
+titles <- paste0("Mg", 1:8, " *")
+
+# 2. Define custom breaks (adjust these based on your data ranges)
+# Note: If you're unsure of the ranges, run: summary(seurat_mg@meta.data[, features])
+custom_breaks <- list(
+  Mg1_up_1 = c(0.5, 1.0),
+  Mg2_up_1 = c(0.1, 0.3),
+  Mg3_up_1 = c(0.3, 1.0),
+  Mg4_up_1 = c(0.2, 0.5),
+  Mg5_up_1 = c(0.1, 0.25),
+  Mg6_up_1 = c(0.1, 0.3),
+  Mg7_up_1 = c(0.1, 0.4),
+  Mg8_up_1 = c(0.1, 0.4)
+)
+
+# Initialize plot list
+plots_umap <- list()
+
+# 3. Loop over features to create UMAPs
+for (i in seq_along(features)) {
+  feature <- features[i]
+  plot_title <- titles[i]
+  
+  # Get breaks for current feature
+  breaks <- custom_breaks[[feature]]
+  
+  plots_umap[[feature]] <- FeaturePlot(
+    seurat_mg,
+    features = feature,
+    min.cutoff = "q10",
+    max.cutoff = "q90",
+    reduction = "umap.cca_rm", 
+    pt.size = 0.1
+  ) +
+    ggtitle(plot_title) + 
+    theme_umap +
+    remove_axes+
+    remove_grid +
+    theme(
+      legend.position = "bottom",             
+      legend.title = element_text(size = 6),  
+      legend.text = element_text(size = 6),   
+     legend.margin = margin(t = -10),
+      plot.margin = margin(0, 0, 4, 0),
+      legend.key.size = unit(2.5, "mm")
+    ) +
+    scale_color_gradientn(
+      name = "Average \nexpression",          
+      colors = c("#c6daeb", "#3A0956"),
+      breaks = breaks,                        # Use manually set breaks
+      #labels = labels                         # Use manually set labels
+    )
+}
+
+# 4. Combine all 8 into a publication-ready grid
+library(patchwork)
+plots_umap[["Mg_all_UMAP"]] <- wrap_plots(plots_umap[features], ncol = 4)
+# Add theme adjustment to the combined object
+# margin(t, r, b, l) -> top, right, bottom, left
+plots_umap[["Mg_all_UMAP"]] <- plots_umap[["Mg_all_UMAP"]] & 
+  theme(plot.margin = margin(t = 5, r = 5, b =25, l = 5))
+plots_umap[["Mg_all_UMAP"]]
+```
+
+```{r}
+ggsave(
+  filename = "results/1DP_2V_SFig04_feature_GarciaBonilla.svg",           
+  plot = plots_umap[["Mg_all_UMAP"]],        
+  device = "svg",                          
+  width = 16.9,                              
+  height = 10,                              
+  units = "cm"                            
+)
+```
+

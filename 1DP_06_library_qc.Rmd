@@ -1,0 +1,224 @@
+---
+title: "1DP_06_library_qc"
+author: "Dominika Dostalova"
+date: "2026-02-17"
+output: html_document
+---
+Introduction:
+The original file was divided into three conditions (LiveCells, LiveNuclei, and FixedNuclei) for comparative analysis. In this section, we describe the preparation process; however, the original file cannot be shared because the file contains data from unrelated experiments that have not yet been published. For this reason, individual CRAM files for each condition (FixedNuclei_raw.cram, LiveNuclei_raw.cram and LiveCells_raw.cram) is provided instead. This analysis is prepared for all obtained cells by the protocols.
+
+# Extract barcodes of cells fro the three condtions - used for subsetting from BAM file in Ubuntu 
+# R script
+```{r Load data}
+suppressMessages(library("Seurat"))
+# Object with all cells obtained by isolation methods
+seurat <- readRDS("ws/1DP_00_seurat_merged_integrated_UMAP_all_cells.rds")
+```
+
+```{r Extract barcodes}
+# 1. Get the unique preparation conditions
+# Using the column you identified: Cond_preparation
+conditions <- unique(seurat@meta.data$Cond_preparation)
+
+# 2. Loop through each condition
+for (cond in conditions) {
+  
+  # Calculate the count (your specific request)
+  cell_count <- sum(seurat$Cond_preparation == cond)
+  # Extract barcodes for the specific condition
+  barcodes <- rownames(seurat@meta.data[seurat@meta.data$Cond_preparation == cond, ])
+  
+  # Save the file
+  file_path <- paste0("ws/", cond, "_barcodes.txt")
+  write.table(
+    barcodes, 
+    file = file_path, 
+    quote = FALSE, 
+    row.names = FALSE, 
+    col.names = FALSE
+  )
+  
+  # 5. NEW: Enhanced message with the count of rows/cells
+  message("Condition: ", cond)
+  message("--> Total cells detected: ", cell_count)
+  message("--> Total cells/barcodes saved: ", length(barcodes))
+  message("--> Output file: ", file_path)
+  message("---------------------------------------")
+}
+```
+
+Code for Ubuntu (2204.5.10021.0) terminal
+```{bash Prepare the environment}
+conda create -n bias_metrics -c bioconda -c conda-forge python=3.9 rseqc samtools trimmomatic seqtk pigz
+condata activate bias_metrics
+cd /mnt/d/Domi/02_Projects/16_3_bias_metrics/data/01_BAM/
+```
+
+```{bash Barcodes in sutable format}
+# Convert the extracted format of barcodes into Linux format
+sed -i 's/\r//' FixedNuclei_barcodes.txt
+sed -i 's/\r//' LiveNuclei_barcodes.txt
+sed -i 's/\r//' LiveCells_barcodes.txt
+```
+
+```{bash Head of bam file}
+# Check the components of BAM file 
+# View the first 10 reads to see the variables and tags
+samtools view Smartseq3xpress.filtered.Aligned.GeneTagged.UBcorrected.sorted.bam | head -n 10
+```
+
+```{bash BAM files for three conditions}
+# Extract reads per condtion from the original BAM file - w and w/o TAG sequences 
+## 1. Grab only the header
+samtools view -H Smartseq3xpress.filtered.Aligned.GeneTagged.UBcorrected.sorted.bam > header.sam
+## 2. Grab only the reads matching asked barcodes
+samtools view Smartseq3xpress.filtered.Aligned.GeneTagged.UBcorrected.sorted.bam | grep -f FixedNuclei_barcodes.txt > FixedNuclei_body.sam
+samtools view Smartseq3xpress.filtered.Aligned.GeneTagged.UBcorrected.sorted.bam | grep -f LiveNuclei_barcodes.txt > LiveNuclei_body.sam
+samtools view Smartseq3xpress.filtered.Aligned.GeneTagged.UBcorrected.sorted.bam | grep -f LiveCells_barcodes.txt > LiveCells_body.sam
+## 3. Combine them and convert back to BAM
+cat header.sam FixedNuclei_body.sam | samtools view -b > FixedNuclei_raw.bam
+cat header.sam LiveNuclei_body.sam | samtools view -b > LiveNuclei_raw.bam
+cat header.sam LiveCells_body.sam| samtools view -b > LiveCells_raw.bam
+```
+
+```{bash BAM files into a compressed from}
+samtools view -C --output-fmt-option no_ref=1 FixedNuclei_raw.bam -o FixedNuclei_raw.cram
+samtools view -C --output-fmt-option no_ref=1 LiveNuclei_raw.bam -o LiveNuclei_raw.cram
+samtools view -C --output-fmt-option no_ref=1 LiveCells_raw.bam -o LiveCells_raw.cram
+```
+
+```{bash CRAM file back to BAM file}
+samtools view -b FixedNuclei_raw.cram -o FixedNuclei_raw.bam
+samtools view -b LiveNuclei_raw.cram -o LiveNuclei_raw.bam
+samtools view -b LiveCells_raw.cram -o LiveCells_raw.bam
+```
+
+```{bash Statistic about sequences w or w/o TAG}
+# Informative statistics about the covarage
+## 1. Count total reads
+samtools view -c FixedNuclei_raw.bam
+## 2. Finds UX:Z: immediately followed by a TAB (indicating no sequence value) - w/o TAG
+samtools view FixedNuclei_raw.bam | grep -P "UX:Z:\t" | wc -l
+## 3. Finds UB:Z: followed by an actual DNA base - w TAG
+samtools view FixedNuclei_raw.bam | grep -P "UB:Z:[ACGT]" | wc -l
+```
+
+```{bash BAM files with TAG sequences per condition}
+# Extract reads per condtion - w TAG 
+## 1. Extract the header first
+samtools view -H FixedNuclei_raw.bam > FixedNuclei_header_tag.sam
+samtools view -H LiveNuclei_raw.bam > LiveNuclei_header_tag.sam
+samtools view -H LiveCells_raw.bam > LiveCells_header_tag.sam
+## 2. Filter for reads where UB:Z: is followed by a DNA base [ACGT]
+samtools view FixedNuclei_raw.bam | grep -P "UB:Z:[ACGT]" > FixedNuclei_tagged_body.sam
+samtools view LiveNuclei_raw.bam | grep -P "UB:Z:[ACGT]" > LiveNuclei_tagged_body.sam
+samtools view LiveCells_raw.bam | grep -P "UB:Z:[ACGT]" > LiveCells_tagged_body.sam
+## 3. Combine and convert to BAM
+cat FixedNuclei_header_tag.sam FixedNuclei_tagged_body.sam | samtools view -b > FixedNuclei_OnlyTagged.bam
+cat LiveNuclei_header_tag.sam LiveNuclei_tagged_body.sam | samtools view -b > LiveNuclei_OnlyTagged.bam
+cat LiveCells_header_tag.sam LiveCells_tagged_body.sam | samtools view -b > LiveCells_OnlyTagged.bam
+```
+
+```{bash BAM files w/o TAG sequences per condition}
+# Extract reads per condtion - w/o TAG 
+## 1. Extract the header first
+samtools view -H FixedNuclei_raw.bam > FixedNuclei_header_nontag.sam
+samtools view -H LiveNuclei_raw.bam > LiveNuclei_header_nontag.sam
+samtools view -H LiveCells_raw.bam > LiveCells_header_nontag.sam
+## 2. Filter for reads where UB:Z: is followed by tab
+samtools view FixedNuclei_raw.bam | grep -P "UX:Z:\t" > FixedNuclei_nontagged_body.sam
+samtools view LiveNuclei_raw.bam | grep -P "UX:Z:\t" > LiveNuclei_nontagged_body.sam
+samtools view LiveCells_raw.bam | grep -P "UX:Z:\t" > LiveCells_nontagged_body.sam
+## 3. Combine and convert to BAM
+cat FixedNuclei_header_nontag.sam FixedNuclei_nontagged_body.sam | samtools view -b > FixedNuclei_nonTagged.bam
+cat LiveNuclei_header_nontag.sam LiveNuclei_nontagged_body.sam | samtools view -b > LiveNuclei_nonTagged.bam
+cat LiveCells_header_nontag.sam LiveCells_nontagged_body.sam | samtools view -b > LiveCells_nonTagged.bam
+```
+
+```{bash BAM files SPIKE with TAG sequnces per condition}
+# SPIKE 
+# Search the header (@SQ lines) for common spike-in prefixes
+samtools view -H FixedNuclei_raw.bam | grep -E "SIRV|ERCC"
+## 1. Extract all spike reads from the TAGGED file (3' Bias metrics)
+samtools view -h FixedNuclei_OnlyTagged.bam | grep -E "^@|ERCC-|SIRV" | samtools view -b > FixedNuclei_Spikes_Tagged.bam
+samtools view -h LiveNuclei_OnlyTagged.bam | grep -E "^@|ERCC-|SIRV" | samtools view -b > LiveNuclei_Spikes_Tagged.bam
+samtools view -h LiveCells_OnlyTagged.bam | grep -E "^@|ERCC-|SIRV" | samtools view -b > LiveCells_Spikes_Tagged.bam
+# 2. Extract all spike reads from the nonTAGGED file (Integrity metrics) - internal reads
+samtools view -h FixedNuclei_nonTagged.bam | grep -E "^@|ERCC-|SIRV" | samtools view -b > FixedNuclei_Spikes_nonTagged.bam
+samtools view -h LiveNuclei_nonTagged.bam | grep -E "^@|ERCC-|SIRV" | samtools view -b > LiveNuclei_Spikes_nonTagged.bam
+samtools view -h LiveCells_nonTagged.bam | grep -E "^@|ERCC-|SIRV" | samtools view -b > LiveCells_Spikes_nonTagged.bam
+```
+
+
+Gene Body Coverage (BAM) Analysis:
+  - Tool: RSeQC (v5.0.3) via usegalaxy.eu ((https://usegalaxy.eu/?tool_id=toolshed.g2.bx.psu.edu%2Frepos%2Fnilesh%2Frseqc%2Frseqc_geneBody_coverage%2F5.0.3%2Bgalaxy0&version=latest).
+  - Reference Models: mm10_RefSeq.bed (https://sourceforge.net/projects/rseqc/files/BED/Mouse_Mus_musculus/mm10_RefSeq.bed.gz/download) - for standard files
+                      Spikes_Final_BED12.bed (custom - see script below ) - for files with only spike-in sequences
+  - Parameters: Minimum mRNA length = 100.
+
+```{bash Spike Bed file}
+# The Galaxy platform requires the BED12 format for this analysis 
+awk '$3=="exon" {
+    split($10, a, "\""); 
+    name=a[2]; 
+    start=$4-1; 
+    end=$5; 
+    len=end-start; 
+    print $1"\t"start"\t"end"\t"name"\t0\t"$7"\t"start"\t"end"\t0\t1\t"len"\t0"
+}' additional_sequence_annot.gtf > Spikes_Final_BED12.bed
+```
+
+The data were initially obtained as individual text files; therefore, we consolidated them into a single, comprehensive file for analysis which is provided.
+```{r}
+# 1. List all Galaxy text files in your directory
+file_paths <- list.files(path = "ws/", 
+                         pattern = "Galaxy.*\\.txt", 
+                         full.names = TRUE)
+
+# 2. Read the first file to initialize the master data frame
+# We read the header to find out how many columns (percentiles) there are
+header_check <- read.table(file_paths[1], header = TRUE, sep = "\t", nrows = 1, check.names = FALSE)
+master_data <- data.frame(Percentile = 1:(ncol(header_check) - 1))
+
+# 3. Loop through all files and add them as new columns
+for (f in file_paths) {
+  # Read the file with check.names=FALSE to keep underscores in names
+  temp_dat <- read.table(f, header = TRUE, sep = "\t", check.names = FALSE, stringsAsFactors = FALSE)
+  
+  # Extract the sample name from the first column of the first row
+  sample_name <- as.character(temp_dat[1, 1])
+  
+  # Extract only the numeric coverage values starting from the second column
+  coverage_values <- as.numeric(temp_dat[1, -1])
+  
+  #  Add to the master data frame using the specific name as the header
+  master_data[[sample_name]] <- coverage_values
+  
+}
+
+# 4. Save the combined file
+write.table(master_data, "ws/1DP_07_Combined_GeneBody_Coverage.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+# See the first few rows to verify the headers
+head(master_data)
+```
+# RNA integrity 
+```{bash}
+# Filter files with insert size
+samtools view FixedNuclei_OnlyTagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > FixedNuclei_isizes_OnlyTagged.txt
+samtools view FixedNuclei_nonTagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > FixedNuclei_isizes_nonTagged.txt
+samtools view FixedNuclei_Spikes_Tagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > FixedNuclei_isizes_Spikes_Tagged.txt
+samtools view FixedNuclei_Spikes_nonTagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > FixedNuclei_isizes_Spikes_nonTagged.txt
+
+samtools view LiveNuclei_OnlyTagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > LiveNuclei_isizes_OnlyTagged.txt
+samtools view LiveNuclei_nonTagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > LiveNuclei_isizes_nonTagged.txt
+samtools view LiveNuclei_Spikes_Tagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > LiveNuclei_isizes_Spikes_Tagged.txt
+samtools view LiveNuclei_Spikes_nonTagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > LiveNuclei_isizes_Spikes_nonTagged.txt
+
+samtools view LiveCells_OnlyTagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > LiveCells_isizes_OnlyTagged.txt
+samtools view LiveCells_nonTagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > LiveCells_isizes_nonTagged.txt
+samtools view LiveCells_Spikes_Tagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > LiveCells_isizes_Spikes_Tagged.txt
+samtools view LiveCells_Spikes_nonTagged.bam | awk '{print ($9 < 0 ? -$9 : $9)}' | grep -v '^0$' > LiveCells_isizes_Spikes_nonTagged.txt
+```
+

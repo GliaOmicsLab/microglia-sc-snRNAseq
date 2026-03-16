@@ -1,6 +1,6 @@
 ---
-title: "1DP_04_seurat_microglia_fig3"
-author: "Domi"
+title: "2V_03_technical_part"
+author: "Dominika Dostalova"
 date: "2024-08-20"
 output: html_document
 editor_options: 
@@ -8,7 +8,6 @@ editor_options:
 ---
 Introduction
 This script is dedicated to visualizing processed data from **DP_00_all_cells_raw_data_to_seurat_merged_integrated_UMAP.Rmd** and **1DP_05_all_cells_LC_FN_raw_data_to_seurat_merged_integrated_UMAP.Rmd**. The processed data are represented using **violin and box plots** to illustrate reads in coding regions or exons; number of genes or UMIs per cell.
-
 
 
 ```{r Load packages and lists,  eval = TRUE, echo = FALSE, message = FALSE, warning=FALSE}
@@ -71,7 +70,7 @@ for (feature in names(features_list)) {
     theme(
       strip.background = element_blank(),
       axis.title.x = element_blank(),
-      axis.text.x = element_text(angle = 325, vjust = +0.1, hjust = +0.2)
+      axis.text.x = element_text(angle = 315, vjust = +0.1, hjust = +0.2)
     ) +
     NoLegend() +
     # Overlay box plot with white fill
@@ -106,7 +105,7 @@ ggsave(
   plot = plots[["3rd_line01"]],          
   device = "svg",                         
   width = 16.9,                             
-  height = 4.5,                            
+  height = 4.7,                            
   units = "cm"                          
 )
 ```
