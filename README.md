@@ -3,6 +3,7 @@
 These scripts guide you through the analysis of single-cell (**scRNA-seq**) and single-nucleus RNA sequencing (**snRNA-seq**) data generated from microglial enrichment experiments using three different isolation protocols: 
 **LiveCells**, **LiveNuclei**, and **FixedNuclei**. These data support the publication titled: *Adapted Smart-seq3xpress Facilitates Selective Microglial Transcriptomic Profiling From Frozen Brain Tissue* (DOI: 10.1007/s10571-026-01743-5).
 
+
 Datasets are publicly available on [Zenodo](https://zenodo.org/records/16737457?preview=1&token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6IjVlNmRiOTVkLTZkNzktNGEwOC1iNjdiLTU2MDM5YzgyOTNkMiIsImRhdGEiOnt9LCJyYW5kb20iOiJlNDE1ZDQwNTVmMDRjNjk0OGM4ZmE2MGIyNjkyNjAwNSJ9.ugfQflwmP0fTMeQn9Pnyw5qQPOPvRTof3b-1URoY4h7OCv3E32YiyXR1agUOjg4JMDpU5dxKnoimctQjOuUzig).
 The main experiment can be explored online via the **Nygen portal**:  
 - [All cells](https://scarfweb.nygen.io/eu-central-1/public/q2acwcw8)  
